@@ -60,10 +60,12 @@ with st.sidebar:
         disabled=st.session_state.vector_db is None
     )
     
-    if st.button("Clear Chat", type="primary"):
-        st.session_state.messages.clear()
+    if st.button("🧹 Clear Chat", type="primary"):
+        st.session_state.messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there! I'm your AI Knowledge Assistant. How can I help you today?"}
+        ]
         st.rerun()
-
     # RAG Document Management
     st.header("🏫 Knowledge Base")
     st.file_uploader(
