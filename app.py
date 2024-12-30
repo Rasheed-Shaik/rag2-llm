@@ -39,6 +39,27 @@ if "session_id" not in st.session_state:
         "model": "google/gemini-2.0-flash-exp"
     })
 
+# Custom CSS for chat messages
+st.markdown("""
+    <style>
+    .chat-message {
+        padding: 0.5rem;
+        border-radius: 5px;
+        margin-bottom: 0.5rem;
+    }
+    .user-message {
+        background-color: #e6f7ff;
+        border: 1px solid #91caff;
+        text-align: right;
+    }
+    .assistant-message {
+        background-color: #f0f0f0;
+        border: 1px solid #d3d3d3;
+        text-align: left;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # Page header
 st.markdown("""<h2 style="text-align: center;">🌍✨ RAG-Enabled Chat Assistant 🧠🦾 </h2>""", unsafe_allow_html=True)
 
@@ -82,22 +103,28 @@ with st.sidebar:
     # RAG Document Management
     st.header("🏫 Knowledge Base")
     st.file_uploader(
-        "Upload Documents",
+        "Upload Documents 📚",
         type=["pdf", "txt", "docx", "md"],
         accept_multiple_files=True,
         on_change=load_doc_to_db,
-        key="rag_docs"
+        key="rag_docs",
+        help="Upload documents to enhance the knowledge base."
     )
 
     st.text_input(
-        "Add Website URL",
+        "Add Website URL 🔗",
         placeholder="https://example.com",
         on_change=load_url_to_db,
-        key="rag_url"
+        key="rag_url",
+        help="Add a URL to fetch content from a website."
     )
 
     with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
-        st.write(st.session_state.rag_sources)
+         if st.session_state.rag_sources:
+            for source in st.session_state.rag_sources:
+                st.markdown(f"- {source}")
+         else:
+                st.markdown("No sources loaded yet.")
 
 # Main chat interface
 if not google_api_key:
@@ -109,25 +136,43 @@ else:
     # Display chat messages
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+            if message["role"] == "user":
+                st.markdown(f'<div class="chat-message user-message">{message["content"]}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="chat-message assistant-message">{message["content"]}</div>', unsafe_allow_html=True)
 
     # Chat input and response
     if prompt := st.chat_input("Your message"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
-            st.markdown(prompt)
+            st.markdown(f'<div class="chat-message user-message">{prompt}</div>', unsafe_allow_html=True)
 
         with st.chat_message("assistant"):
-            messages = [
-                HumanMessage(content=m["content"]) if m["role"] == "user"
-                else AIMessage(content=m["content"])
-                for m in st.session_state.messages
-            ]
-
-            if st.session_state.use_rag:
+           if st.session_state.use_rag:
                 if st.session_state.vector_db:
-                    st.write_stream(stream_llm_rag_response(llm, messages))
+                     with st.spinner("Thinking..."):
+                         messages = [
+                            HumanMessage(content=m["content"]) if m["role"] == "user"
+                            else AIMessage(content=m["content"])
+                            for m in st.session_state.messages
+                        ]
+                         response_placeholder = st.empty()
+                         full_response = ""
+                         for chunk in stream_llm_rag_response(llm, messages):
+                            full_response += chunk
+                            response_placeholder.markdown(f'<div class="chat-message assistant-message">{full_response}</div>', unsafe_allow_html=True)
+
                 else:
-                    st.warning("Please upload documents or URLs to use RAG.")
-            else:
-                st.write_stream(stream_llm_response(llm, messages))
+                     st.warning("Please upload documents or URLs to use RAG.")
+           else:
+                with st.spinner("Thinking..."):
+                    messages = [
+                        HumanMessage(content=m["content"]) if m["role"] == "user"
+                        else AIMessage(content=m["content"])
+                        for m in st.session_state.messages
+                    ]
+                    response_placeholder = st.empty()
+                    full_response = ""
+                    for chunk in stream_llm_response(llm, messages):
+                        full_response += chunk
+                        response_placeholder.markdown(f'<div class="chat-message assistant-message">{full_response}</div>', unsafe_allow_html=True)
