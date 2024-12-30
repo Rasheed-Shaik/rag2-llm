@@ -80,7 +80,6 @@ def initialize_vector_db(persist_directory: str = CHROMA_PERSIST_DIR) -> Chroma:
             client_settings=chroma_settings,
             collection_name=f"collection_{st.session_state.session_id}",
         )
-        st.session_state.vector_db_ready = True
         return vector_db
     except ValueError:
         # If the database doesn't exist, create a new one
@@ -126,7 +125,6 @@ def process_documents(docs: List[Document]) -> None:
                 persist_directory=CHROMA_PERSIST_DIR,
                 client_settings=chroma_settings,
             )
-            st.session_state.vector_db_ready = True
         else:
             try:
                 # Load the existing database and add documents
@@ -147,7 +145,6 @@ def process_documents(docs: List[Document]) -> None:
                     persist_directory=CHROMA_PERSIST_DIR,
                     client_settings=chroma_settings,
                 )
-                st.session_state.vector_db_ready = True
 
         st.session_state.vector_db.persist()
 
@@ -191,9 +188,6 @@ def load_doc_to_db(uploaded_files):
                     os.unlink(file_path)
     if uploaded_files:
         st.success("Documents loaded successfully!")
-        # Rerun to update the toggle state if the DB is now ready
-        if not st.session_state.vector_db_ready:
-            st.experimental_rerun()
 
 def load_url_to_db(url):
     """Load URL content to vector database."""
@@ -207,9 +201,6 @@ def load_url_to_db(url):
             process_documents(docs)
             st.session_state.rag_sources.append(url)
             st.success("URL content loaded successfully!")
-            # Rerun to update the toggle state if the DB is now ready
-            if not st.session_state.vector_db_ready:
-                st.experimental_rerun()
         except Exception as e:
             st.error(f"Error loading URL: {e}")
 

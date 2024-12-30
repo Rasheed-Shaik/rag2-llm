@@ -97,6 +97,9 @@ with st.sidebar:
     if uploaded_files:
         with st.spinner("Loading documents..."):
             load_doc_to_db(uploaded_files)
+            if not st.session_state.vector_db_ready and st.session_state.rag_sources:
+                st.session_state.vector_db_ready = True
+                st.rerun()
 
     # URL Input
     url_input = st.text_input(
@@ -110,6 +113,9 @@ with st.sidebar:
     if st.session_state.rag_url != url_input and url_input:
         with st.spinner("Loading URL..."):
             load_url_to_db(url_input)
+            if not st.session_state.vector_db_ready and st.session_state.rag_sources:
+                st.session_state.vector_db_ready = True
+                st.rerun()
         st.session_state.rag_url = url_input # Update session state to avoid re-triggering
 
     # Source Display
@@ -129,7 +135,7 @@ elif not st.session_state.vector_db_ready and st.session_state.rag_sources:
         st.session_state.vector_db = initialize_vector_db(persist_directory="chroma_db")
         st.session_state.vector_db_ready = True
         st.session_state.use_rag = True # Enable RAG once DB is ready
-        st.experimental_rerun() # Rerun to update UI
+        st.rerun() # Rerun to update UI
 else:
     # Initialize LLM
     llm = ChatGoogleGenerativeAI(
