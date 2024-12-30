@@ -42,7 +42,6 @@ if "session_id" not in st.session_state:
 # Custom CSS for chat messages
 st.markdown("""
     <style>
-
     /* Dark mode adjustments */
     [data-theme="dark"] .chat-message.user-message {
         background-color: #262a34; /* Darker background for user messages */
@@ -76,16 +75,17 @@ st.markdown("""
         padding: 0.5rem;
         border-radius: 5px;
         margin-bottom: 0.5rem;
+
     }
     .user-message {
         background-color: #e6f7ff;
         border: 1px solid #91caff;
-        text-align: right;
+
     }
     .assistant-message {
         background-color: #f0f0f0;
         border: 1px solid #d3d3d3;
-        text-align: left;
+
     }
     </style>
 """, unsafe_allow_html=True)
