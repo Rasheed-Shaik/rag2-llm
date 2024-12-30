@@ -13,13 +13,23 @@ from langchain_community.document_loaders import (
 )
 from langchain_community.vectorstores import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, SystemMessagePromptTemplate
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from chromadb.config import Settings
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 DB_DOCS_LIMIT = 10
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+
+def initialize_llm(model, google_api_key):
+    """Initialize the LLM."""
+    return ChatGoogleGenerativeAI(
+        model=model.split("/")[-1],
+        google_api_key=google_api_key,
+        temperature=0.7,
+        streaming=True
+    )
 
 def stream_llm_response(llm, messages):
     """Stream LLM response without RAG"""
@@ -60,6 +70,7 @@ def initialize_vector_db(docs: List[Document]) -> Chroma:
 def process_documents(docs: List[Document]) -> None:
     """Process and load documents into vector database"""
     if not docs:
+        st.warning("No documents to process.")
         return
 
     try:
@@ -121,7 +132,8 @@ def load_doc_to_db():
 
                         if loader_class:
                             loader = loader_class(file_path)
-                            docs.extend(loader.load())
+                            loaded_docs = loader.load()
+                            docs.extend(loaded_docs)
                             st.session_state.rag_sources.append(doc_file.name)
 
                 except Exception as e:
@@ -164,6 +176,9 @@ def get_rag_chain(llm):
     )
 
     context_prompt = ChatPromptTemplate.from_messages([
+        SystemMessagePromptTemplate.from_template(
+            "You are a helpful assistant, use the context to answer the user's question."
+        ),
         MessagesPlaceholder(variable_name="messages"),
         ("user", "{input}"),
         ("user", "Generate a search query based on our conversation, focusing on recent messages.")
@@ -172,7 +187,9 @@ def get_rag_chain(llm):
     retriever_chain = create_history_aware_retriever(llm, retriever, context_prompt)
 
     response_prompt = ChatPromptTemplate.from_messages([
-        ("system", "Answer based on the context and your knowledge. Context: {context}"),
+        SystemMessagePromptTemplate.from_template(
+            "Answer based on the context and your knowledge. Context: {context}"
+        ),
         MessagesPlaceholder(variable_name="messages"),
         ("user", "{input}")
     ])

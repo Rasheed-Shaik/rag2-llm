@@ -15,7 +15,7 @@ if platform.system() != "Windows":
 from pathlib import Path
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage, AIMessage
-from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db
+from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db, initialize_llm
 
 # Streamlit page configuration
 st.set_page_config(
@@ -35,7 +35,8 @@ if "session_id" not in st.session_state:
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi there! How can I assist you today?"}
         ],
-        "use_rag": False
+        "use_rag": False,
+        "model": "google/gemini-2.0-flash-exp"
     })
 
 # Page header
@@ -53,10 +54,16 @@ with st.sidebar:
             type="password",
             key="google_api_key"
         )
-
     st.markdown("### 🎮 Controls")
-    # Model Selection and Chat Controls
-    model = "google/gemini-2.0-flash-exp"  # Using a stable model
+    # Model Selection
+    model = st.selectbox(
+        "Select Model",
+        ["google/gemini-2.0-flash-exp", "google/gemini-pro"],
+        index = 0 if st.session_state.model == "google/gemini-2.0-flash-exp" else 1,
+        key="model_selection"
+    )
+    st.session_state.model = model
+
 
     # Initialize RAG toggle based on vector_db presence
     st.session_state.use_rag = st.session_state.vector_db is not None
@@ -97,12 +104,7 @@ if not google_api_key:
     st.warning("⚠️ Please enter your Google API Key in the sidebar to continue.")
 else:
     # Initialize LLM
-    llm = ChatGoogleGenerativeAI(
-        model=model.split("/")[-1],
-        google_api_key=google_api_key,
-        temperature=0.7,
-        streaming=True
-    )
+    llm = initialize_llm(st.session_state.model, google_api_key)
 
     # Display chat messages
     for message in st.session_state.messages:
@@ -123,6 +125,9 @@ else:
             ]
 
             if st.session_state.use_rag:
-                st.write_stream(stream_llm_rag_response(llm, messages))
+                if st.session_state.vector_db:
+                    st.write_stream(stream_llm_rag_response(llm, messages))
+                else:
+                    st.warning("Please upload documents or URLs to use RAG.")
             else:
                 st.write_stream(stream_llm_response(llm, messages))
