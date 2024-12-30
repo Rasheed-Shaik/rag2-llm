@@ -30,10 +30,8 @@ if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
     st.session_state.rag_sources = []
     st.session_state.vector_db = None
-    st.session_state.messages = [
-        {"role": "user", "content": "Hello"},
-        {"role": "assistant", "content": "Hi there! I'm your AI Knowledge Assistant. How can I help you today?"}
-    ]
+    st.session_state.messages = []
+    
 
 # Page header with enhanced styling
 st.markdown("""
