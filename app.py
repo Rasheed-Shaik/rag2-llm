@@ -65,7 +65,7 @@ with st.sidebar:
     st.markdown("### 🎮 Controls")
     
     # Model Selection and RAG Toggle
-    model = "google/gemini-2.0-flash-thinking-exp-1219"
+    model = "google/gemini-2.0-flash-thinking-exp-12192"
     st.session_state.use_rag = st.toggle(
         "🧠 Enable Knowledge Base",
         value=st.session_state.vector_db is not None,
