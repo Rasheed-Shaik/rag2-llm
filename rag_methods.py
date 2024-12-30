@@ -37,8 +37,12 @@ def stream_llm_response(llm_stream, messages):
     """Stream LLM response without RAG"""
     response_message = ""
     for chunk in llm_stream.stream(messages):
-        response_message += chunk.content
-        yield chunk.content
+        if isinstance(chunk.content, list):
+            response_message += "".join(chunk.content)
+            yield "".join(chunk.content)
+        else:
+            response_message += chunk.content
+            yield chunk.content
     st.session_state.messages.append({"role": "assistant", "content": response_message})
 
 
@@ -209,12 +213,18 @@ def stream_llm_rag_response(llm, messages):
         return
 
     response_message = "🔍 "
-    for chunk in rag_chain.pick("answer").stream({
+    for chunk in rag_chain.stream({
         "messages": messages[:-1],
         "input": messages[-1].content
     }):
-        response_message += chunk
-        yield chunk
+        if isinstance(chunk, dict) and "text" in chunk:
+            if isinstance(chunk["text"], list):
+                 response_message += "".join(chunk["text"])
+                 yield "".join(chunk["text"])
+            else:
+                response_message += chunk["text"]
+                yield chunk["text"]
+
     st.session_state.messages.append({
         "role": "assistant",
         "content": response_message
