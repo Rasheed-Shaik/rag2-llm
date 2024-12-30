@@ -40,15 +40,15 @@ st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant �
 
 # Sidebar configuration
 with st.sidebar:
-    # API Key Management
-    with st.expander("🔐 API Keys", expanded=True):
+    google_api_key = st.secrets.get("google_api_key", "") if hasattr(st, "secrets") else ""
+    
+    # Only show API input if no key in secrets
+    if not google_api_key:
         google_api_key = st.text_input(
             "Google API Key",
             type="password",
-            value=os.getenv("GOOGLE_API_KEY", ""),
             key="google_api_key"
         )
-
     # Model Selection and Chat Controls
     model = "google/gemini-2.0-flash-exp"  # Using a stable model
     st.session_state.use_rag = st.toggle(
