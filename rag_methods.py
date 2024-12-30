@@ -31,7 +31,7 @@ def initialize_llm(model, google_api_key):
         streaming=True
     )
 
-st.write(f"Current file path: {os.path.abspath(__file__)}")
+
 
 def stream_llm_response(llm, messages):
     response_message = ""
@@ -41,8 +41,7 @@ def stream_llm_response(llm, messages):
         print(f"Chunk content: {chunk.content}")
         if isinstance(chunk.content, str):
             response_message += chunk.content
-        elif isinstance(chunk.content, list):
-            response_message += "".join(str(item) for item in chunk.content) # Assuming list of string-like items
+        
         else:
             print(f"Warning: Received unexpected chunk content type: {type(chunk.content)}")
     return response_message
