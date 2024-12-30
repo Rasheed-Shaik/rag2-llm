@@ -130,7 +130,7 @@ def process_documents(docs: List[Document]) -> None:
                 collection_name=f"collection_{st.session_state.session_id}",
                 persist_directory=CHROMA_PERSIST_DIR,
                 client_settings=chroma_settings,
-                metadatas=[{"source": doc.metadata.get("source", "unknown")} for doc in docs] # Store source in metadata
+                metadatas=[doc.metadata for doc in chunks] # Use metadata from chunks
             )
         else:
             try:
@@ -141,10 +141,7 @@ def process_documents(docs: List[Document]) -> None:
                     client_settings=chroma_settings,
                     collection_name=f"collection_{st.session_state.session_id}",
                 )
-                st.session_state.vector_db.add_documents(
-                    chunks,
-                    metadatas=[{"source": doc.metadata.get("source", "unknown")} for doc in docs] # Store source in metadata
-                )
+                st.session_state.vector_db.add_documents(chunks) # Remove explicit metadatas
             except Exception as e:
                 st.error(f"Error adding documents to existing vector DB: {e}")
                 # Fallback to creating a new one if loading fails
@@ -154,7 +151,7 @@ def process_documents(docs: List[Document]) -> None:
                     collection_name=f"collection_{st.session_state.session_id}",
                     persist_directory=CHROMA_PERSIST_DIR,
                     client_settings=chroma_settings,
-                    metadatas=[{"source": doc.metadata.get("source", "unknown")} for doc in docs] # Store source in metadata
+                    metadatas=[doc.metadata for doc in chunks] # Use metadata from chunks
                 )
 
         st.session_state.vector_db.persist()
