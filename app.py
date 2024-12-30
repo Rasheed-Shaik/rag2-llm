@@ -127,7 +127,7 @@ else:
     llm = ChatGoogleGenerativeAI(
         model=model.split("/")[-1],
         google_api_key=google_api_key,
-        temperature=0.7,
+        temperature=0,
         streaming=True
     )
 
