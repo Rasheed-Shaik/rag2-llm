@@ -1,4 +1,4 @@
 [theme]
 base="dark"
-textColor="#C0C0C0"  # Or your preferred text color
+textColor="FFFFFF"  # Or your preferred text color
 background="#1E1E1E"  # A slightly lighter dark gray
