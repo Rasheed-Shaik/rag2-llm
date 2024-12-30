@@ -31,7 +31,7 @@ def initialize_llm(model, google_api_key):
         streaming=True
     )
 
-print(f"Current file path: {os.path.abspath(__file__)}")
+st.write(f"Current file path: {os.path.abspath(__file__)}")
 
 def stream_llm_response(llm, messages):
     response_message = ""
