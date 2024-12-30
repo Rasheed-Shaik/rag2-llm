@@ -42,6 +42,36 @@ if "session_id" not in st.session_state:
 # Custom CSS for chat messages
 st.markdown("""
     <style>
+
+    /* Dark mode adjustments */
+    [data-theme="dark"] .chat-message.user-message {
+        background-color: #262a34; /* Darker background for user messages */
+        border: 1px solid #4a5568; /* Darker border for user messages */
+        color: #f0f0f0; /* Light text for contrast */
+    }
+
+    [data-theme="dark"] .chat-message.assistant-message {
+        background-color: #374151; /* Darker background for assistant messages */
+        border: 1px solid #4a5568; /* Darker border for assistant messages */
+        color: #f0f0f0; /* Light text for contrast */
+    }
+    [data-theme="dark"] .stTextInput > div > div > input,
+    [data-theme="dark"] .stTextArea > div > div > textarea {
+        background-color: #374151 !important;
+        color: #f0f0f0 !important;
+        border-color: #4a5568 !important;
+    }
+    [data-theme="dark"] .stSelectbox > div > div > div,
+    [data-theme="dark"] .stFileUploader > div > div,
+    [data-theme="dark"] .stExpander > div > div > div{
+        background-color: #374151 !important;
+        color: #f0f0f0 !important;
+    }
+    [data-theme="dark"] .stButton > button {
+        background-color: #4a5568 !important;
+        color: #f0f0f0 !important;
+    }
+
     .chat-message {
         padding: 0.5rem;
         border-radius: 5px;
