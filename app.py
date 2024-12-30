@@ -128,6 +128,9 @@ else:
         model=model.split("/")[-1],
         google_api_key=google_api_key,
         temperature=0,
+        top_p= 0.95,
+        top_k= 64,
+        max_output_tokens=8192,
         streaming=True
     )
 
