@@ -61,7 +61,7 @@ def stream_llm_response(llm_stream: ChatGoogleGenerativeAI, messages: List[Any])
 
     st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-def initialize_vector_db(persist_directory: str = CHROMA_PERSIST_DIR) -> Chroma:
+def initialize_vector_db(persist_directory: str = CHROMA_PERSIST_DIR) -> Chroma | None:
     """Initialize or load the vector database."""
     embedding_function = HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL_NAME,
@@ -82,13 +82,19 @@ def initialize_vector_db(persist_directory: str = CHROMA_PERSIST_DIR) -> Chroma:
         )
         return vector_db
     except ValueError:
-        # If the database doesn't exist, create a new one
-        return Chroma(
-            embedding_function=embedding_function,
-            persist_directory=persist_directory,
-            client_settings=chroma_settings,
-            collection_name=f"collection_{st.session_state.session_id}",
-        )
+        # If the database doesn't exist, return None
+        return None
+
+def load_rag_sources(vector_db: Chroma) -> List[str]:
+    """Load the list of RAG sources from the vector database."""
+    if vector_db is not None:
+        metadatas = vector_db.get(include=['metadatas'])['metadatas']
+        sources = set()
+        for metadata in metadatas:
+            if 'source' in metadata:
+                sources.add(metadata['source'])
+        return list(sources)
+    return []
 
 def process_documents(docs: List[Document]) -> None:
     """Process and load documents into vector database."""
@@ -124,6 +130,7 @@ def process_documents(docs: List[Document]) -> None:
                 collection_name=f"collection_{st.session_state.session_id}",
                 persist_directory=CHROMA_PERSIST_DIR,
                 client_settings=chroma_settings,
+                metadatas=[{"source": doc.metadata.get("source", "unknown")} for doc in docs] # Store source in metadata
             )
         else:
             try:
@@ -134,7 +141,10 @@ def process_documents(docs: List[Document]) -> None:
                     client_settings=chroma_settings,
                     collection_name=f"collection_{st.session_state.session_id}",
                 )
-                st.session_state.vector_db.add_documents(chunks)
+                st.session_state.vector_db.add_documents(
+                    chunks,
+                    metadatas=[{"source": doc.metadata.get("source", "unknown")} for doc in docs] # Store source in metadata
+                )
             except Exception as e:
                 st.error(f"Error adding documents to existing vector DB: {e}")
                 # Fallback to creating a new one if loading fails
@@ -144,6 +154,7 @@ def process_documents(docs: List[Document]) -> None:
                     collection_name=f"collection_{st.session_state.session_id}",
                     persist_directory=CHROMA_PERSIST_DIR,
                     client_settings=chroma_settings,
+                    metadatas=[{"source": doc.metadata.get("source", "unknown")} for doc in docs] # Store source in metadata
                 )
 
         st.session_state.vector_db.persist()
@@ -154,13 +165,14 @@ def process_documents(docs: List[Document]) -> None:
 def load_doc_to_db(uploaded_files):
     """Load documents to vector database."""
     for uploaded_file in uploaded_files:
-        if uploaded_file.name not in st.session_state.rag_sources:
+        source_name = uploaded_file.name
+        if source_name not in st.session_state.rag_sources:
             if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
                 st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
                 break
 
             try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as tmp_file:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=Path(source_name).suffix) as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
                     file_path = tmp_file.name
 
@@ -170,19 +182,21 @@ def load_doc_to_db(uploaded_files):
                         ".txt": TextLoader,
                         ".md": TextLoader,
                     }
-                    file_extension = Path(uploaded_file.name).suffix.lower()
+                    file_extension = Path(source_name).suffix.lower()
                     loader_class = loaders.get(file_extension)
 
                     if loader_class:
                         loader = loader_class(file_path)
                         loaded_docs = loader.load()
+                        for doc in loaded_docs:
+                            doc.metadata['source'] = source_name # Add source to metadata
                         process_documents(loaded_docs)
-                        st.session_state.rag_sources.append(uploaded_file.name)
+                        st.session_state.rag_sources.append(source_name)
                     else:
-                        st.warning(f"Unsupported file type: {uploaded_file.name}")
+                        st.warning(f"Unsupported file type: {source_name}")
 
             except Exception as e:
-                st.error(f"Error loading {uploaded_file.name}: {e}")
+                st.error(f"Error loading {source_name}: {e}")
             finally:
                 if os.path.exists(file_path):
                     os.unlink(file_path)
@@ -198,6 +212,8 @@ def load_url_to_db(url):
         try:
             loader = WebBaseLoader(url)
             docs = loader.load()
+            for doc in docs:
+                doc.metadata['source'] = url # Add source to metadata
             process_documents(docs)
             st.session_state.rag_sources.append(url)
             st.success("URL content loaded successfully!")

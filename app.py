@@ -10,7 +10,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage, AIMessage
 
 # Local module import
-from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db, initialize_vector_db
+from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db, initialize_vector_db, load_rag_sources
 
 # Streamlit page configuration
 st.set_page_config(
@@ -38,6 +38,14 @@ if "session_id" not in st.session_state:
         {"role": "user", "content": "Hello"},
         {"role": "assistant", "content": "Hi there! I'm your AI Knowledge Assistant. How can I help you today?"}
     ]
+
+# --- Load existing vector DB and sources on startup ---
+if not st.session_state.vector_db_ready:
+    with st.spinner("Loading existing knowledge base..."):
+        st.session_state.vector_db = initialize_vector_db(persist_directory="chroma_db")
+        if st.session_state.vector_db is not None:
+            st.session_state.vector_db_ready = True
+            st.session_state.rag_sources = load_rag_sources(st.session_state.vector_db)
 
 # --- Header Section ---
 st.markdown("""
@@ -133,9 +141,10 @@ if not google_api_key:
 elif not st.session_state.vector_db_ready and st.session_state.rag_sources:
     with st.spinner("Initializing Knowledge Base... This may take a moment."):
         st.session_state.vector_db = initialize_vector_db(persist_directory="chroma_db")
-        st.session_state.vector_db_ready = True
-        st.session_state.use_rag = True # Enable RAG once DB is ready
-        st.rerun() # Rerun to update UI
+        if st.session_state.vector_db is not None:
+            st.session_state.vector_db_ready = True
+            st.session_state.use_rag = True # Enable RAG once DB is ready
+            st.rerun() # Rerun to update UI
 else:
     # Initialize LLM
     llm = ChatGoogleGenerativeAI(
