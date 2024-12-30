@@ -37,14 +37,29 @@ def stream_llm_response(llm_stream, messages):
     """Stream LLM response without RAG"""
     response_message = ""
     for chunk in llm_stream.stream(messages):
-        if isinstance(chunk.content, list):
-            response_message += "".join(chunk.content)
-            yield "".join(chunk.content)
-        else:
-            response_message += chunk.content
-            yield chunk.content
-    st.session_state.messages.append({"role": "assistant", "content": response_message})
+        # Inspect the chunk structure (for debugging - you can remove this later)
+        print(f"Chunk received: {chunk}")
 
+        text_content = None
+        if hasattr(chunk, 'content'):
+            if isinstance(chunk.content, list):
+                text_content = "".join(chunk.content)
+            else:
+                text_content = chunk.content
+        elif isinstance(chunk, dict) and 'text' in chunk:
+            text_content = chunk['text']
+        elif isinstance(chunk, dict) and 'candidates' in chunk and chunk['candidates']:
+            # Assuming 'candidates' is a list of potential responses
+            best_candidate = chunk['candidates'][0]  # Or some logic to choose the best
+            if 'content' in best_candidate and 'parts' in best_candidate['content']:
+                text_content = "".join([part['text'] for part in best_candidate['content']['parts']])
+        # Add more checks here if you find other structures in the raw chunks
+
+        if text_content:
+            response_message += text_content
+            yield text_content
+
+    st.session_state.messages.append({"role": "assistant", "content": response_message})
 
 def initialize_vector_db(docs: List[Document]) -> Chroma:
     """Initialize vector database with provided documents"""
