@@ -33,18 +33,14 @@ def initialize_llm(model, google_api_key):
 
 
 
-def stream_llm_response(llm, messages):
+def stream_llm_response(llm_stream, messages):
+    """Stream LLM response without RAG"""
     response_message = ""
-    stream = llm.stream(messages)
-    for chunk in stream:
-        print(f"Chunk type: {type(chunk.content)}")
-        print(f"Chunk content: {chunk.content}")
-        if isinstance(chunk.content, str):
-            response_message += chunk.content
-        
-        else:
-            print(f"Warning: Received unexpected chunk content type: {type(chunk.content)}")
-    return response_message
+    for chunk in llm_stream.stream(messages):
+        response_message += chunk.content
+        yield chunk.content
+    st.session_state.messages.append({"role": "assistant", "content": response_message})
+
 
 def initialize_vector_db(docs: List[Document]) -> Chroma:
     """Initialize vector database with provided documents"""
