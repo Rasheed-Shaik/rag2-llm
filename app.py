@@ -36,10 +36,11 @@ if "session_id" not in st.session_state:
     ]
 
 # Page header
-st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
+st.markdown("""<h2 style="text-align: center;">🌍✨ RAG-Enabled Chat Assistant 🧠🦾 </h2>""", unsafe_allow_html=True)
 
 # Sidebar configuration
 with st.sidebar:
+    st.markdown("### ⚙️ Configuration")
     google_api_key = st.secrets.get("google_api_key", "") if hasattr(st, "secrets") else ""
     
     # Only show API input if no key in secrets
@@ -49,6 +50,8 @@ with st.sidebar:
             type="password",
             key="google_api_key"
         )
+
+    st.markdown("### 🎮 Controls")    
     # Model Selection and Chat Controls
     model = "google/gemini-2.0-flash-exp"  # Using a stable model
     st.session_state.use_rag = st.toggle(
@@ -62,7 +65,7 @@ with st.sidebar:
         st.rerun()
 
     # RAG Document Management
-    st.header("📚 Knowledge Base")
+    st.header("🏫 Knowledge Base")
     st.file_uploader(
         "Upload Documents",
         type=["pdf", "txt", "docx", "md"],
