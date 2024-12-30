@@ -19,11 +19,12 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from chromadb.config import Settings
 
 DB_DOCS_LIMIT = 10
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 
-def stream_llm_response(llm_stream, messages):
+def stream_llm_response(llm, messages):
     """Stream LLM response without RAG"""
     response_message = ""
-    for chunk in llm_stream.stream(messages):
+    for chunk in llm.stream(messages):
         response_message += chunk.content
         yield chunk.content
     st.session_state.messages.append({"role": "assistant", "content": response_message})
@@ -31,47 +32,47 @@ def stream_llm_response(llm_stream, messages):
 def initialize_vector_db(docs: List[Document]) -> Chroma:
     """Initialize vector database with provided documents"""
     try:
-        # Using a more reliable and publicly available model
         embedding_function = HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2",
+            model_name=EMBEDDING_MODEL_NAME,
             model_kwargs={'device': 'cpu'}
         )
-        
+
         temp_dir = tempfile.mkdtemp()
         chroma_settings = Settings(
             is_persistent=True,
             persist_directory=temp_dir,
             anonymized_telemetry=False
         )
-        
-        return Chroma.from_documents(
+
+        vector_db = Chroma.from_documents(
             documents=docs,
             embedding=embedding_function,
             collection_name=f"collection_{st.session_state.session_id}",
             persist_directory=temp_dir,
             client_settings=chroma_settings
         )
-        
+
+        return vector_db
     except Exception as e:
-        st.error(f"Vector DB initialization failed: {str(e)}")
+        st.error(f"Vector DB initialization failed: {e}")
         return None
 
 def process_documents(docs: List[Document]) -> None:
     """Process and load documents into vector database"""
     if not docs:
         return
-        
+
     try:
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,  # Reduced chunk size for better processing
+            chunk_size=1000,
             chunk_overlap=200
         )
-        
+
         chunks = text_splitter.split_documents(docs)
         if not chunks:
             st.warning("No content extracted from documents.")
             return
-            
+
         if st.session_state.vector_db is None:
             vector_db = initialize_vector_db(chunks)
             if vector_db:
@@ -79,13 +80,15 @@ def process_documents(docs: List[Document]) -> None:
         else:
             try:
                 st.session_state.vector_db.add_documents(chunks)
-            except Exception:
+            except Exception as e:
+                st.error(f"Error adding documents to existing vector DB: {e}")
                 vector_db = initialize_vector_db(chunks)
                 if vector_db:
                     st.session_state.vector_db = vector_db
-                    
+
     except Exception as e:
-        st.error(f"Document processing error: {str(e)}")
+        st.error(f"Document processing error: {e}")
+
 
 def load_doc_to_db():
     """Load documents to vector database"""
@@ -102,23 +105,31 @@ def load_doc_to_db():
                         tmp_file.write(doc_file.getvalue())
                         file_path = tmp_file.name
 
-                        loader = None
-                        if doc_file.type == "application/pdf":
-                            loader = PyPDFLoader(file_path)
-                        elif doc_file.name.endswith(".docx"):
-                            loader = Docx2txtLoader(file_path)
-                        elif doc_file.type in ["text/plain", "text/markdown"]:
-                            loader = TextLoader(file_path)
+                        loaders = {
+                            "application/pdf": PyPDFLoader,
+                            ".docx": Docx2txtLoader,
+                            "text/plain": TextLoader,
+                            "text/markdown": TextLoader
+                        }
 
-                        if loader:
+                        loader_class = loaders.get(doc_file.type, None)
+                        if not loader_class:
+                          for key in loaders.keys():
+                              if doc_file.name.endswith(key):
+                                  loader_class = loaders.get(key)
+                                  break
+
+                        if loader_class:
+                            loader = loader_class(file_path)
                             docs.extend(loader.load())
                             st.session_state.rag_sources.append(doc_file.name)
-                            
+
                 except Exception as e:
-                    st.error(f"Error loading {doc_file.name}: {str(e)}")
+                    st.error(f"Error loading {doc_file.name}: {e}")
                 finally:
                     if os.path.exists(file_path):
                         os.unlink(file_path)
+
 
         if docs:
             process_documents(docs)
@@ -140,45 +151,50 @@ def load_url_to_db():
                 process_documents(docs)
                 st.success(f"URL content loaded successfully!")
             except Exception as e:
-                st.error(f"Error loading URL: {str(e)}")
+                st.error(f"Error loading URL: {e}")
 
 def get_rag_chain(llm):
     """Create RAG chain for conversational retrieval"""
+    if st.session_state.vector_db is None:
+        st.error("Vector database is not initialized.")
+        return None
+
     retriever = st.session_state.vector_db.as_retriever(
         search_kwargs={"k": 3}
     )
-    
+
     context_prompt = ChatPromptTemplate.from_messages([
         MessagesPlaceholder(variable_name="messages"),
         ("user", "{input}"),
         ("user", "Generate a search query based on our conversation, focusing on recent messages.")
     ])
-    
+
     retriever_chain = create_history_aware_retriever(llm, retriever, context_prompt)
-    
+
     response_prompt = ChatPromptTemplate.from_messages([
         ("system", "Answer based on the context and your knowledge. Context: {context}"),
         MessagesPlaceholder(variable_name="messages"),
         ("user", "{input}")
     ])
-    
+
     return create_retrieval_chain(
         retriever_chain,
         create_stuff_documents_chain(llm, response_prompt)
     )
 
-def stream_llm_rag_response(llm_stream, messages):
+def stream_llm_rag_response(llm, messages):
     """Stream RAG-enhanced LLM response"""
-    rag_chain = get_rag_chain(llm_stream)
+    rag_chain = get_rag_chain(llm)
+    if rag_chain is None:
+        return
+
     response_message = "🔍 "
-    
     for chunk in rag_chain.pick("answer").stream({
         "messages": messages[:-1],
         "input": messages[-1].content
     }):
         response_message += chunk
         yield chunk
-        
     st.session_state.messages.append({
         "role": "assistant",
         "content": response_message
