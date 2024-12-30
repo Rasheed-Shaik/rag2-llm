@@ -166,49 +166,57 @@ def load_doc_to_db(uploaded_files):
     """Load documents to vector database."""
     for uploaded_file in uploaded_files:
         source_name = uploaded_file.name
-        if source_name not in st.session_state.rag_sources:
-            if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
-                st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
-                break
+        if source_name in st.session_state.rag_sources:
+            st.warning(f"Document '{source_name}' already loaded.")
+            continue  # Skip processing if already loaded
 
-            try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=Path(source_name).suffix) as tmp_file:
-                    tmp_file.write(uploaded_file.getvalue())
-                    file_path = tmp_file.name
+        if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
+            st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
+            break
 
-                    loaders: Dict[str, Any] = {
-                        ".pdf": PyPDFLoader,
-                        ".docx": Docx2txtLoader,
-                        ".txt": TextLoader,
-                        ".md": TextLoader,
-                    }
-                    file_extension = Path(source_name).suffix.lower()
-                    loader_class = loaders.get(file_extension)
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(source_name).suffix) as tmp_file:
+                tmp_file.write(uploaded_file.getvalue())
+                file_path = tmp_file.name
 
-                    if loader_class:
-                        loader = loader_class(file_path)
-                        loaded_docs = loader.load()
-                        for doc in loaded_docs:
-                            doc.metadata['source'] = source_name # Add source to metadata
-                        process_documents(loaded_docs)
-                        st.session_state.rag_sources.append(source_name)
-                    else:
-                        st.warning(f"Unsupported file type: {source_name}")
+                loaders: Dict[str, Any] = {
+                    ".pdf": PyPDFLoader,
+                    ".docx": Docx2txtLoader,
+                    ".txt": TextLoader,
+                    ".md": TextLoader,
+                }
+                file_extension = Path(source_name).suffix.lower()
+                loader_class = loaders.get(file_extension)
 
-            except Exception as e:
-                st.error(f"Error loading {source_name}: {e}")
-            finally:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
+                if loader_class:
+                    loader = loader_class(file_path)
+                    loaded_docs = loader.load()
+                    for doc in loaded_docs:
+                        doc.metadata['source'] = source_name # Add source to metadata
+                    process_documents(loaded_docs)
+                    st.session_state.rag_sources.append(source_name)
+                else:
+                    st.warning(f"Unsupported file type: {source_name}")
+
+        except Exception as e:
+            st.error(f"Error loading {source_name}: {e}")
+        finally:
+            if os.path.exists(file_path):
+                os.unlink(file_path)
     if uploaded_files:
         st.success("Documents loaded successfully!")
 
 def load_url_to_db(url):
     """Load URL content to vector database."""
-    if url and url not in st.session_state.rag_sources:
-        if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
-            st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
-            return
+    if url and url in st.session_state.rag_sources:
+        st.warning(f"URL '{url}' already loaded.")
+        return
+
+    if url and len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
+        st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
+        return
+
+    if url:
         try:
             loader = WebBaseLoader(url)
             docs = loader.load()
@@ -252,11 +260,21 @@ def stream_llm_rag_response(llm: ChatGoogleGenerativeAI, messages: List[Any]):
     """Stream RAG-enhanced LLM response."""
     rag_chain = get_rag_chain(llm)
     if rag_chain is None:
+        yield "Error: RAG chain not initialized."
         return
 
-    for chunk in rag_chain.stream({"messages": messages[:-1], "input": messages[-1].content}):
-        if isinstance(chunk, dict) and "answer" in chunk:
-            text_content = chunk["answer"]
-            yield text_content
-        elif isinstance(chunk, str):
-            yield chunk
+    result = rag_chain.invoke({"messages": messages[:-1], "input": messages[-1].content})
+    answer = result.get("answer", "")
+    source_documents = result.get("source_documents", [])
+
+    full_response = ""
+    for text in answer:
+        full_response += text
+        yield text
+
+    if source_documents:
+        with st.expander("Sources"):
+            for doc in source_documents:
+                st.markdown(f"> `{doc.metadata.get('source', 'unknown')}`")
+
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
