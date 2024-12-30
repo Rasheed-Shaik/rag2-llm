@@ -1,6 +1,17 @@
 import streamlit as st
 import os
 import uuid
+
+# SQLite fix for Streamlit Cloud
+import platform
+if platform.system() != "Windows":
+    try:
+        __import__('pysqlite3')
+        import sys
+        sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+    except ImportError:
+        pass
+
 from pathlib import Path
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage, AIMessage
