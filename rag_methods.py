@@ -31,9 +31,10 @@ def stream_llm_response(llm_stream, messages):
 def initialize_vector_db(docs: List[Document]) -> Chroma:
     """Initialize vector database with provided documents"""
     try:
+        # Using a more reliable and publicly available model
         embedding_function = HuggingFaceEmbeddings(
-            model_name="Alibaba-NLP/gte-base-en",  # Using base model for efficiency
-            model_kwargs={"trust_remote_code": True}
+            model_name="all-MiniLM-L6-v2",
+            model_kwargs={'device': 'cpu'}
         )
         
         temp_dir = tempfile.mkdtemp()
