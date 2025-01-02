@@ -24,11 +24,24 @@ DB_DOCS_LIMIT = 10
 INDEX_NAME = "langchain-rag"
 METADATA_NAMESPACE = "document_metadata"
 
+# rag_methods.py
 def initialize_pinecone():
     """Initialize Pinecone client using the new Pinecone class"""
     pc = Pinecone(
         api_key=st.secrets.get("PINECONE_API_KEY")
     )
+    # Create index if it doesn't exist (important for the first time)
+    existing_indexes = pc.list_indexes().names()
+    if INDEX_NAME not in existing_indexes:
+        pc.create_index(
+            name=INDEX_NAME,
+            dimension=384,  # dimension for BAAI text embeddings
+            metric='cosine',
+            spec=ServerlessSpec(
+                cloud='aws',
+                region='us-east-1'
+            )
+        )
     return pc.Index(INDEX_NAME)
 
 def get_embedding_function():
@@ -94,24 +107,25 @@ def load_persisted_documents():
     except Exception as e:
         st.error(f"Error loading persisted documents: {str(e)}")
 
+# rag_methods.py
 def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
     """Initialize vector database with provided documents"""
     try:
         embedding_function = get_embedding_function()
-        index = initialize_pinecone()
+        index = initialize_pinecone()  # Get the Pinecone Index object
 
         return LangchainPinecone.from_documents(
             documents=docs,
             embedding=embedding_function,
-            index=index,
+            index=index,  # Use the index object
             namespace=f"ns_{st.session_state.session_id}",
-            text_key="page_content" # Add text_key here
+            text_key="page_content"
         )
-
     except Exception as e:
         st.error(f"Vector DB initialization failed: {str(e)}")
         return None
 
+# rag_methods.py
 def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> None:
     """Process and load documents into vector database"""
     if not docs:
@@ -136,7 +150,7 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
         else:
             try:
                 embedding_function = get_embedding_function()
-                index = initialize_pinecone()
+                index = initialize_pinecone() # Get the Pinecone Index object
                 namespace = f"ns_{st.session_state.session_id}"
                 vectorstore = LangchainPinecone(index, embedding_function, namespace, text_key="page_content")
                 vectorstore.add_documents(chunks)
