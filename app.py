@@ -51,14 +51,7 @@ print("app.py: Before calling initialize_documents()")  # Added print statement
 initialize_documents()
 print("app.py: After calling initialize_documents()")   # Added print statement
 
-# Initialize vector database if not already initialized
-if st.session_state.vector_db is None and st.session_state.rag_sources:
-    with st.spinner("Initializing Knowledge Base..."):
-        try:
-            st.session_state.vector_db = initialize_vector_db()
-            st.success("Knowledge Base initialized.")
-        except Exception as e:
-            st.error(f"Error initializing Knowledge Base: {e}")
+
 
 # Page header
 st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
