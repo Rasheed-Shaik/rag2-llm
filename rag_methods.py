@@ -42,7 +42,7 @@ def initialize_pinecone():
             )
         )
     
-    return pc
+    return pc.Index(INDEX_NAME)
 
 def get_embedding_function():
     """Get the embedding function"""
