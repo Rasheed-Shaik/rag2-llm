@@ -28,7 +28,7 @@ st.set_page_config(
 
 # Initialize session states
 if "session_id" not in st.session_state:
-    st.session_state.session_id = str(uuid.uuid4())
+    st.session_id = str(uuid.uuid4())
     st.session_state.rag_sources = []
     st.session_state.vector_db = None
     st.session_state.messages = [
@@ -92,17 +92,15 @@ with st.sidebar:
     if url_input:
         load_url_to_db(url_input)
 
-    # Use the expander's state to trigger initialize_documents
-    if "knowledge_base_expanded" not in st.session_state:
-        st.session_state.knowledge_base_expanded = False
+    # Trigger initialize_documents when the expander is opened
+    if "load_docs_on_expand" not in st.session_state:
+        st.session_state.load_docs_on_expand = False
 
-    with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})", key="knowledge_base_expander"):
+    with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
         st.write(st.session_state.rag_sources)
-        st.session_state.knowledge_base_expanded = True  # Set state when expanded
-
-    if st.session_state.knowledge_base_expanded:
-        initialize_documents()
-        st.session_state.knowledge_base_expanded = False # Reset to avoid repeated calls
+        if not st.session_state.load_docs_on_expand:
+            initialize_documents()
+            st.session_state.load_docs_on_expand = True
 
 # Main chat interface
 if not google_api_key:
