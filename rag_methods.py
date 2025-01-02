@@ -3,7 +3,7 @@ import os
 import tempfile
 from typing import List
 from pathlib import Path
-from langchain.schema import Document
+from langchain.schema import Document, HumanMessage # Import HumanMessage here
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader, WebBaseLoader
