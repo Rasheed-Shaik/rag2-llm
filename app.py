@@ -28,17 +28,18 @@ st.set_page_config(
 
 # Initialize session states
 if "session_id" not in st.session_state:
-    st.session_id = str(uuid.uuid4())
+    st.session_state.session_id = str(uuid.uuid4())
+if "rag_sources" not in st.session_state:
     st.session_state.rag_sources = []
+if "vector_db" not in st.session_state:
     st.session_state.vector_db = None
+if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "user", "content": "Hello"},
         {"role": "assistant", "content": "Hi there! How can I assist you today?"}
     ]
-    # initialize_documents()  # Load persisted documents on startup - consider lazy loading
-elif "rag_sources" not in st.session_state:
-    st.session_state.rag_sources = []
-    # initialize_documents() # Load persisted documents on startup - consider lazy loading
+if "load_docs_on_expand" not in st.session_state:
+    st.session_state.load_docs_on_expand = False
 
 # Page header
 st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
@@ -92,15 +93,12 @@ with st.sidebar:
     if url_input:
         load_url_to_db(url_input)
 
-    # Trigger initialize_documents when the expander is opened
-    if "load_docs_on_expand" not in st.session_state:
-        st.session_state.load_docs_on_expand = False
-
     with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
         st.write(st.session_state.rag_sources)
         if not st.session_state.load_docs_on_expand:
-            initialize_documents()
-            st.session_state.load_docs_on_expand = True
+            if "session_id" in st.session_state:  # Ensure session_id is initialized
+                initialize_documents()
+                st.session_state.load_docs_on_expand = True
 
 # Main chat interface
 if not google_api_key:
