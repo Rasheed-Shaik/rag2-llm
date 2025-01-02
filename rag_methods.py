@@ -35,13 +35,13 @@ if platform.system() != "Windows":
 @st.cache_resource()
 def initialize_pinecone():
     pinecone_api_key = st.secrets.get("PINECONE_API_KEY")
-    pinecone_environment = st.secrets.get("PINECONE_ENVIRONMENT")
-    if not pinecone_api_key or not pinecone_environment:
+    
+    if not pinecone_api_key:
         print("rag_methods.py: Pinecone API key and environment not found in Streamlit secrets.")
         return None
 
     try:
-        pc = Pinecone(api_key=pinecone_api_key, environment=pinecone_environment)
+        pc = Pinecone(api_key=pinecone_api_key)
         if INDEX_NAME not in pc.list_indexes().names:
             print(f"rag_methods.py: Creating Pinecone index '{INDEX_NAME}'...")
             pc.create_index(
