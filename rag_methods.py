@@ -103,33 +103,36 @@ def load_doc_to_db():
     if "rag_docs" in st.session_state and st.session_state.rag_docs:
         docs = []
         for doc_file in st.session_state.rag_docs:
+            # Check if the document already exists in the session or on disk
             if doc_file.name not in st.session_state.rag_sources:
                 if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
                     st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
                     break
 
                 try:
-                    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-                        tmp_file.write(doc_file.getvalue())
-                        file_path = tmp_file.name
+                    # Save the document to a directory on disk
+                    doc_dir = Path("docs")
+                    doc_dir.mkdir(parents=True, exist_ok=True)
+                    doc_path = doc_dir / doc_file.name
+                    
+                    with open(doc_path, "wb") as f:
+                        f.write(doc_file.getvalue())
 
-                        loader = None
-                        if doc_file.type == "application/pdf":
-                            loader = PyPDFLoader(file_path)
-                        elif doc_file.name.endswith(".docx"):
-                            loader = Docx2txtLoader(file_path)
-                        elif doc_file.type in ["text/plain", "text/markdown"]:
-                            loader = TextLoader(file_path)
+                    # Load document using appropriate loader
+                    loader = None
+                    if doc_file.type == "application/pdf":
+                        loader = PyPDFLoader(str(doc_path))
+                    elif doc_file.name.endswith(".docx"):
+                        loader = Docx2txtLoader(str(doc_path))
+                    elif doc_file.type in ["text/plain", "text/markdown"]:
+                        loader = TextLoader(str(doc_path))
 
-                        if loader:
-                            docs.extend(loader.load())
-                            st.session_state.rag_sources.append(doc_file.name)
+                    if loader:
+                        docs.extend(loader.load())
+                        st.session_state.rag_sources.append(doc_file.name)
                             
                 except Exception as e:
                     st.error(f"Error loading {doc_file.name}: {str(e)}")
-                finally:
-                    if os.path.exists(file_path):
-                        os.unlink(file_path)
 
         if docs:
             process_documents(docs)
@@ -152,6 +155,30 @@ def load_url_to_db():
                 st.success(f"URL content loaded successfully!")
             except Exception as e:
                 st.error(f"Error loading URL: {str(e)}")
+
+def initialize_documents():
+    """Load documents from disk if they exist"""
+    doc_dir = Path("docs")
+    if doc_dir.exists():
+        for doc_file in doc_dir.iterdir():
+            if doc_file.name not in st.session_state.rag_sources:
+                try:
+                    loader = None
+                    if doc_file.suffix == ".pdf":
+                        loader = PyPDFLoader(str(doc_file))
+                    elif doc_file.suffix == ".docx":
+                        loader = Docx2txtLoader(str(doc_file))
+                    elif doc_file.suffix in [".txt", ".md"]:
+                        loader = TextLoader(str(doc_file))
+
+                    if loader:
+                        docs = loader.load()
+                        process_documents(docs)
+                        st.session_state.rag_sources.append(doc_file.name)
+
+                except Exception as e:
+                    st.error(f"Error loading {doc_file.name}: {str(e)}")
+
 
 def get_rag_chain(llm):
     """Create RAG chain for conversational retrieval"""
