@@ -42,9 +42,7 @@ def initialize_pinecone():
             )
         )
     
-    # Get the index
-    index = pc.Index(INDEX_NAME)
-    return index, INDEX_NAME
+    return pc
 
 def get_embedding_function():
     """Get the embedding function"""
@@ -73,11 +71,11 @@ def save_document_metadata(doc_name: str, doc_type: str):
         
         # Initialize vector store for metadata if not exists
         if "metadata_store" not in st.session_state:
-            _, index_name = initialize_pinecone()
+            pc = initialize_pinecone()
             st.session_state.metadata_store = LangchainPinecone.from_documents(
                 documents=[metadata_doc],
                 embedding=embedding_function,
-                index_name=index_name,
+                index=INDEX_NAME,
                 namespace=METADATA_NAMESPACE
             )
         else:
@@ -91,11 +89,11 @@ def load_persisted_documents():
     try:
         if "metadata_store" not in st.session_state:
             embedding_function = get_embedding_function()
-            index, _ = initialize_pinecone()
+            pc = initialize_pinecone()
             
             st.session_state.metadata_store = LangchainPinecone(
                 embedding=embedding_function,
-                pinecone_index=index,
+                index=INDEX_NAME,
                 namespace=METADATA_NAMESPACE
             )
         
@@ -118,23 +116,18 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
     """Initialize vector database with provided documents"""
     try:
         embedding_function = get_embedding_function()
-        index, index_name = initialize_pinecone()
+        pc = initialize_pinecone()
         
         return LangchainPinecone.from_documents(
             documents=docs,
             embedding=embedding_function,
-            index_name=index_name,
+            index=INDEX_NAME,
             namespace=f"ns_{st.session_state.session_id}"
         )
         
     except Exception as e:
         st.error(f"Vector DB initialization failed: {str(e)}")
         return None
-
-# Rest of the code remains the same...
-
-
-
 
 def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> None:
     """Process and load documents into vector database"""
