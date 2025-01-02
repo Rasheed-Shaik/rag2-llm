@@ -3,21 +3,6 @@ import streamlit as st
 import os
 import uuid
 
-# Initialize session states
-if "session_id" not in st.session_state:
-    st.session_state.session_id = str(uuid.uuid4())
-if "rag_sources" not in st.session_state:
-    st.session_state.rag_sources = []
-if "vector_db" not in st.session_state:
-    st.session_state.vector_db = None
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        HumanMessage(content="Hello"),
-        AIMessage(content="Hi there! How can I assist you today?")
-    ]
-if "documents_loaded" not in st.session_state:
-    st.session_state.documents_loaded = False
-
 # SQLite fix for Streamlit Cloud
 import platform
 if platform.system() != "Windows":
@@ -43,6 +28,21 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="expanded"
 )
+
+# Initialize session states
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+if "rag_sources" not in st.session_state:
+    st.session_state.rag_sources = []
+if "vector_db" not in st.session_state:
+    st.session_state.vector_db = None
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        HumanMessage(content="Hello"),
+        AIMessage(content="Hi there! How can I assist you today?")
+    ]
+if "documents_loaded" not in st.session_state:
+    st.session_state.documents_loaded = False
 
 # Page header
 st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
