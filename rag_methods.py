@@ -24,12 +24,32 @@ DB_DOCS_LIMIT = 10
 INDEX_NAME = "langchain-rag"
 METADATA_NAMESPACE = "document_metadata"
 
+
+
+# ... other imports ...
+
+INDEX_NAME = "langchain-rag"  # Ensure this is defined at the top level
+
 def initialize_pinecone():
     """Initialize Pinecone client using the new Pinecone class"""
     pc = Pinecone(
         api_key=st.secrets.get("PINECONE_API_KEY")
     )
-    return pc
+
+    # Create index if it doesn't exist
+    existing_indexes = pc.list_indexes().names()
+    if INDEX_NAME not in existing_indexes:
+        pc.create_index(
+            name=INDEX_NAME,
+            dimension=384,  # dimension for BAAI text embeddings
+            metric='cosine',
+            spec=ServerlessSpec(
+                cloud='aws',
+                region='us-east-1'
+            )
+        )
+
+    return pc.Index(INDEX_NAME)  # Return the Index object
 
 def get_embedding_function():
     """Get the embedding function"""
@@ -63,36 +83,36 @@ def save_document_metadata(doc_name: str, doc_type: str):
     except Exception as e:
         st.error(f"Error saving document metadata: {str(e)}")
 
+# rag_methods.py
+# ... other imports ...
+
 def load_persisted_documents():
-    """Load document metadata from Pinecone and initialize vector DB if needed"""
+    """Load document metadata from Pinecone"""
     try:
         embedding_function = get_embedding_function()
-        pc = initialize_pinecone()
-        index = pc.Index(INDEX_NAME)
+        index = initialize_pinecone() # Get the Pinecone Index object
 
-        vectorstore = LangchainPinecone(index, embedding_function, METADATA_NAMESPACE)
+        st.session_state.metadata_store = LangchainPinecone(
+            embedding=embedding_function,
+            index=index, # Use the index object here
+            namespace=METADATA_NAMESPACE
+        )
 
-        # Fetch metadata for the current session
-        results = vectorstore.similarity_search(
-            query="document metadata",  # Dummy query
+        # Query all documents for the current session
+        results = st.session_state.metadata_store.similarity_search(
+            "document metadata",
             k=100, # Fetch a reasonable number of results
             filter={"session_id": st.session_state.session_id}
         )
 
-        loaded_sources = []
+        # Extract document names from metadata
         for result in results:
             try:
                 metadata = json.loads(result.page_content)
-                source_name = metadata.get("name")
-                if source_name and source_name not in st.session_state.rag_sources:
-                    st.session_state.rag_sources.append(source_name)
-                    loaded_sources.append(source_name)
+                if metadata["name"] not in st.session_state.rag_sources:
+                    st.session_state.rag_sources.append(metadata["name"])
             except json.JSONDecodeError:
                 st.error(f"Error decoding metadata: {result.page_content}")
-
-        # Initialize vector DB if sources are found
-        if loaded_sources and st.session_state.vector_db is None:
-            initialize_vector_db_from_metadata(loaded_sources)
 
     except Exception as e:
         st.error(f"Error loading persisted documents: {str(e)}")
@@ -119,21 +139,21 @@ def initialize_vector_db_from_metadata(source_names: List[str]):
     except Exception as e:
         st.error(f"Error initializing vector DB from metadata: {str(e)}")
 
+# rag_methods.py
+# ... other imports ...
+
 def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
     """Initialize vector database with provided documents"""
     try:
         embedding_function = get_embedding_function()
-        pc = initialize_pinecone()
-        index = pc.Index(INDEX_NAME)
-        namespace = f"ns_{st.session_state.session_id}"
+        index = initialize_pinecone()  # Get the Pinecone Index object
 
-        vectorstore = LangchainPinecone.from_documents(
+        return LangchainPinecone.from_documents(
             documents=docs,
             embedding=embedding_function,
-            index=index,
-            namespace=namespace
+            index=index,  # Use the index object here
+            namespace=f"ns_{st.session_state.session_id}"
         )
-        return vectorstore
 
     except Exception as e:
         st.error(f"Vector DB initialization failed: {str(e)}")
