@@ -17,26 +17,34 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 import pinecone
+from pinecone import Pinecone, ServerlessSpec
 
 DB_DOCS_LIMIT = 10
 
+
+
 def initialize_pinecone():
-    """Initialize Pinecone client"""
-    pinecone.init(
-        api_key=st.secrets.get("PINECONE_API_KEY"),
-        environment=st.secrets.get("PINECONE_ENV")
+    """Initialize Pinecone client using the new Pinecone class"""
+    pc = Pinecone(
+        api_key=st.secrets.get("PINECONE_API_KEY")
     )
+    
     index_name = "langchain-rag"
     
     # Create index if it doesn't exist
-    if index_name not in pinecone.list_indexes():
-        pinecone.create_index(
+    if index_name not in pc.list_indexes().names():
+        pc.create_index(
             name=index_name,
-            metric="cosine",
-            dimension=384  # dimension for BAAI text embeddings
+            dimension=384,  # Update dimension to match your embedding model
+            metric='cosine',
+            spec=ServerlessSpec(
+                cloud="aws",
+                region='us-west-2'
+            )
         )
     
-    return pinecone.Index(index_name)
+    return pc.index(index_name)
+
 
 def initialize_vector_db(docs: List[Document]) -> Pinecone:
     """Initialize vector database with provided documents"""
@@ -59,6 +67,7 @@ def initialize_vector_db(docs: List[Document]) -> Pinecone:
     except Exception as e:
         st.error(f"Vector DB initialization failed: {str(e)}")
         return None
+
 
 def process_documents(docs: List[Document]) -> None:
     """Process and load documents into vector database"""
