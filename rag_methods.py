@@ -11,44 +11,48 @@ from langchain_community.document_loaders import (
     Docx2txtLoader,
     TextLoader
 )
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import Pinecone
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from chromadb.config import Settings
+import pinecone
 
 DB_DOCS_LIMIT = 10
 
-def stream_llm_response(llm_stream, messages):
-    """Stream LLM response without RAG"""
-    response_message = ""
-    for chunk in llm_stream.stream(messages):
-        response_message += chunk.content
-        yield chunk.content
-    st.session_state.messages.append({"role": "assistant", "content": response_message})
+def initialize_pinecone():
+    """Initialize Pinecone client"""
+    pinecone.init(
+        api_key=st.secrets.get("PINECONE_API_KEY"),
+        environment=st.secrets.get("PINECONE_ENV")
+    )
+    index_name = "langchain-rag"
+    
+    # Create index if it doesn't exist
+    if index_name not in pinecone.list_indexes():
+        pinecone.create_index(
+            name=index_name,
+            metric="cosine",
+            dimension=768  # dimension for gte-base-en embeddings
+        )
+    
+    return pinecone.Index(index_name)
 
-def initialize_vector_db(docs: List[Document]) -> Chroma:
+def initialize_vector_db(docs: List[Document]) -> Pinecone:
     """Initialize vector database with provided documents"""
     try:
         embedding_function = HuggingFaceEmbeddings(
-            model_name="Alibaba-NLP/gte-base-en",  # Using base model for efficiency
+            model_name="Alibaba-NLP/gte-base-en",
             model_kwargs={"trust_remote_code": True}
         )
         
-        temp_dir = tempfile.mkdtemp()
-        chroma_settings = Settings(
-            is_persistent=True,
-            persist_directory=temp_dir,
-            anonymized_telemetry=False
-        )
+        pinecone_index = initialize_pinecone()
         
-        return Chroma.from_documents(
+        return Pinecone.from_documents(
             documents=docs,
             embedding=embedding_function,
-            collection_name=f"collection_{st.session_state.session_id}",
-            persist_directory=temp_dir,
-            client_settings=chroma_settings
+            index_name=pinecone_index.name,
+            namespace=f"ns_{st.session_state.session_id}"
         )
         
     except Exception as e:
@@ -62,7 +66,7 @@ def process_documents(docs: List[Document]) -> None:
         
     try:
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,  # Reduced chunk size for better processing
+            chunk_size=1000,
             chunk_overlap=200
         )
         
@@ -165,6 +169,14 @@ def get_rag_chain(llm):
         retriever_chain,
         create_stuff_documents_chain(llm, response_prompt)
     )
+
+def stream_llm_response(llm_stream, messages):
+    """Stream LLM response without RAG"""
+    response_message = ""
+    for chunk in llm_stream.stream(messages):
+        response_message += chunk.content
+        yield chunk.content
+    st.session_state.messages.append({"role": "assistant", "content": response_message})
 
 def stream_llm_rag_response(llm_stream, messages):
     """Stream RAG-enhanced LLM response"""
