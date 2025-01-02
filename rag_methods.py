@@ -24,7 +24,7 @@ INDEX_NAME = "langchain-rag"
 METADATA_NAMESPACE = "document_metadata"
 
 def initialize_pinecone():
-    """Initialize Pinecone client using the new Pinecone class"""
+    """Initialize Pinecone client and return the index"""
     pc = Pinecone(
         api_key=st.secrets.get("PINECONE_API_KEY")
     )
@@ -42,7 +42,8 @@ def initialize_pinecone():
             )
         )
     
-    return pc
+    # Return the index instance instead of the client
+    return pc.Index(INDEX_NAME)
 
 def get_embedding_function():
     """Get the embedding function"""
@@ -55,12 +56,13 @@ def get_embedding_function():
 def create_pinecone_instance(namespace: str):
     """Create a LangchainPinecone instance with consistent parameters"""
     embedding_function = get_embedding_function()
-    _ = initialize_pinecone()  # Ensure index exists
+    index = initialize_pinecone()  # Get the index instance
     
     return LangchainPinecone(
         embedding=embedding_function,
-        index=INDEX_NAME,
-        text_key="text",  # Consistent text_key across all instances
+        index_name=INDEX_NAME,  # Use index_name instead of index
+        pinecone_index=index,  # Pass the index instance
+        text_key="text",
         namespace=namespace
     )
 
@@ -113,10 +115,12 @@ def load_persisted_documents():
 def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
     """Initialize vector database with provided documents"""
     try:
+        index = initialize_pinecone()  # Get the index instance
         return LangchainPinecone.from_documents(
             documents=docs,
             embedding=get_embedding_function(),
-            index=INDEX_NAME,
+            index_name=INDEX_NAME,  # Use index_name instead of index
+            pinecone_index=index,  # Pass the index instance
             text_key="text",
             namespace=f"ns_{st.session_state.session_id}"
         )
