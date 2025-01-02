@@ -4,7 +4,7 @@ import os
 import tempfile
 from typing import List
 from pathlib import Path
-from langchain.schema import Document
+from langchain.schema import Document, BaseMessage, HumanMessage, AIMessage
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain_community.document_loaders import (
     WebBaseLoader,
@@ -188,6 +188,7 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
         st.write("initialize_vector_db: END - Error")
         return None
 
+# rag_methods.py
 def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> None:
     """Process and load documents into vector database"""
     st.write(f"process_documents: START - doc_name: {doc_name}, doc_type: {doc_type}, num_docs: {len(docs)}")
@@ -239,6 +240,7 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
     except Exception as e:
         st.error(f"Document processing error: {str(e)}")
         st.write(f"process_documents: END - Error: {str(e)}")
+
 def load_doc_to_db(uploaded_files):
     """Load documents to vector database"""
     st.write("load_doc_to_db: START")
@@ -334,15 +336,15 @@ def get_rag_chain(llm):
         create_stuff_documents_chain(llm, response_prompt)
     )
 
-def stream_llm_response(llm_stream, messages):
+def stream_llm_response(llm_stream, messages: List[BaseMessage]):
     """Stream LLM response without RAG"""
     response_message = ""
     for chunk in llm_stream.stream(messages):
         response_message += chunk.content
         yield chunk.content
-    st.session_state.messages.append({"role": "assistant", "content": response_message})
+    st.session_state.messages.append(AIMessage(content=response_message))
 
-def stream_llm_rag_response(llm_stream, messages):
+def stream_llm_rag_response(llm_stream, messages: List[BaseMessage]):
     """Stream RAG-enhanced LLM response"""
     rag_chain = get_rag_chain(llm_stream)
     response_message = ""

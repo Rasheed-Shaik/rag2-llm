@@ -35,8 +35,8 @@ if "vector_db" not in st.session_state:
     st.session_state.vector_db = None
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "user", "content": "Hello"},
-        {"role": "assistant", "content": "Hi there! How can I assist you today?"}
+        HumanMessage(content="Hello"),
+        AIMessage(content="Hi there! How can I assist you today?")
     ]
 if "documents_loaded" not in st.session_state:
     st.session_state.documents_loaded = False
@@ -76,8 +76,8 @@ with st.sidebar:
 
     if st.button("Clear Chat", type="primary"):
         st.session_state.messages = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there! How can I assist you today?"}
+            HumanMessage(content="Hello"),
+            AIMessage(content="Hi there! How can I assist you today?")
         ]
         st.rerun()
 
@@ -130,12 +130,12 @@ else:
 
     # Display chat messages
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+        with st.chat_message(message.role):
+            st.markdown(message.content)
 
     # Chat input and response
     if prompt := st.chat_input("Your message"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.session_state.messages.append(HumanMessage(content=prompt))
         with st.chat_message("user"):
             st.markdown(prompt)
 
@@ -144,9 +144,7 @@ else:
             st.write(f"Chat Loop: st.session_state.vector_db is {st.session_state.vector_db}")
             if st.session_state.use_rag and st.session_state.vector_db is not None:
                 st.write("Chat Loop: Executing RAG Response")
-                # Corrected line:
                 st.write_stream(stream_llm_rag_response(llm, st.session_state.messages))
             else:
                 st.write("Chat Loop: Executing Non-RAG Response")
-                # Corrected line:
                 st.write_stream(stream_llm_response(llm, st.session_state.messages))
