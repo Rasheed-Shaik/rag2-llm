@@ -188,7 +188,6 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
         st.write("initialize_vector_db: END - Error")
         return None
 
-# rag_methods.py
 def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> None:
     """Process and load documents into vector database"""
     st.write(f"process_documents: START - doc_name: {doc_name}, doc_type: {doc_type}, num_docs: {len(docs)}")
@@ -220,17 +219,13 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
         else:
             st.write("process_documents: Adding to existing vector DB")
             try:
-                embedding_function = get_embedding_function()
-                index = initialize_pinecone() # Get the Pinecone Index object
-                namespace = f"ns_{st.session_state.session_id}"
-                vectorstore = LangchainPinecone(index, embedding_function, namespace, text_key="page_content")
-                vectorstore.add_documents(chunks)
+                st.session_state.vector_db.add_documents(chunks)  # Use the existing vector_db object
                 save_document_metadata(doc_name, doc_type)
                 st.write("process_documents: Added documents to existing vector DB.")
             except Exception as e:
                 st.error(f"Error adding documents to existing DB: {str(e)}")
                 st.write(f"process_documents: Error adding to existing DB: {str(e)}, attempting re-initialization")
-                # Fallback to re-initializing if adding fails
+                # Fallback to re-initializing if adding fails (consider why this might be needed)
                 vector_db = initialize_vector_db(chunks)
                 if vector_db:
                     st.session_state.vector_db = vector_db
@@ -244,7 +239,6 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
     except Exception as e:
         st.error(f"Document processing error: {str(e)}")
         st.write(f"process_documents: END - Error: {str(e)}")
-
 def load_doc_to_db(uploaded_files):
     """Load documents to vector database"""
     st.write("load_doc_to_db: START")
