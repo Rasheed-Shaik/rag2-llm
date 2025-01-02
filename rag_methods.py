@@ -33,7 +33,7 @@ def initialize_pinecone():
         pinecone.create_index(
             name=index_name,
             metric="cosine",
-            dimension=768  # dimension for gte-base-en embeddings
+            dimension=384  # dimension for BAAI text embeddings
         )
     
     return pinecone.Index(index_name)
@@ -42,8 +42,9 @@ def initialize_vector_db(docs: List[Document]) -> Pinecone:
     """Initialize vector database with provided documents"""
     try:
         embedding_function = HuggingFaceEmbeddings(
-            model_name="Alibaba-NLP/gte-base-en",
-            model_kwargs={"trust_remote_code": True}
+            model_name="BAAI/bge-small-en",  # Changed to BAAI's model
+            model_kwargs={"trust_remote_code": True},
+            encode_kwargs={"normalize_embeddings": True}  # Recommended for BAAI embeddings
         )
         
         pinecone_index = initialize_pinecone()
