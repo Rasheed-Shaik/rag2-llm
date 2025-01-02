@@ -128,13 +128,13 @@ else:
         streaming=True
     )
 
-    # Display chat messages
+     # Display chat messages
     for i, message in enumerate(st.session_state.messages):
         st.write(f"Debugging message[{i}]: {message}, type: {type(message)}")
-        if not hasattr(message, 'role'):
-            st.error(f"Error: message[{i}] does not have a 'role' attribute. Type: {type(message)}, Attributes: {message.__dict__ if hasattr(message, '__dict__') else dir(message)}")
+        if not hasattr(message, 'type'):
+            st.error(f"Error: message[{i}] does not have a 'type' attribute. Type: {type(message)}, Attributes: {message.__dict__ if hasattr(message, '__dict__') else dir(message)}")
         try:
-            with st.chat_message(message.role):
+            with st.chat_message(message.type):  # Use message.type here
                 st.markdown(message.content)
         except Exception as e:
             st.error(f"Error displaying message[{i}]: {e}")
