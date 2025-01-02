@@ -32,7 +32,7 @@ def initialize_pinecone():
     
     # Create index if it doesn't exist
     if index_name not in pc.list_indexes().names():
-        pc.create_index(
+        index = pc.create_index(
             name=index_name,
             dimension=384,  # Update dimension to match your embedding model
             metric='cosine',
@@ -42,7 +42,7 @@ def initialize_pinecone():
             )
         )
     
-    return pc.index(index_name)
+    return index
 
 
 def initialize_vector_db(docs: List[Document]) -> Pinecone:
