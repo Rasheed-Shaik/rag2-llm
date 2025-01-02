@@ -92,8 +92,9 @@ with st.sidebar:
     if url_input:
         load_url_to_db(url_input)
 
-    with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})", on_change=lambda: initialize_documents()): # Trigger on expand
-        st.write(st.session_state.rag_sources)
+    if "rag_sources" in st.session_state:  # Check if rag_sources is initialized
+        with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})", on_change=lambda: initialize_documents()): # Trigger on expand
+            st.write(st.session_state.rag_sources)
 
 # Main chat interface
 if not google_api_key:
