@@ -15,7 +15,7 @@ if platform.system() != "Windows":
 from pathlib import Path
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage, AIMessage
-from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db, initialize_documents, initialize_vector_db  # Ensure initialize_vector_db is imported
+from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db, initialize_documents, initialize_vector_db
 
 # Streamlit page configuration - MOVE THIS TO THE TOP
 st.set_page_config(
@@ -28,7 +28,6 @@ st.set_page_config(
 # Initialize session states (move to the very top, after set_page_config)
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
-    st.rerun()  # Rerun to ensure session_id is immediately available
 if "rag_sources" not in st.session_state:
     st.session_state.rag_sources = []
 if "vector_db" not in st.session_state:
@@ -37,6 +36,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "documents_loaded" not in st.session_state:
     st.session_state.documents_loaded = False
+if "initial_load_complete" not in st.session_state:
+    st.session_state.initial_load_complete = False
 
 # Initialize default messages only if messages is empty
 if not st.session_state.messages:
@@ -46,12 +47,12 @@ if not st.session_state.messages:
     except NameError as e:
         st.error(f"NameError during message initialization: {e}. Please ensure 'langchain' is installed.")
 
-# Initialize persisted documents on app start/reload (call unconditionally)
-print("app.py: Before calling initialize_documents()")  # Added print statement
-initialize_documents()
-print("app.py: After calling initialize_documents()")   # Added print statement
-
-
+# Initialize persisted documents on app start (call conditionally)
+print("app.py: Before calling initialize_documents()")
+if not st.session_state.initial_load_complete:
+    initialize_documents()
+    st.session_state.initial_load_complete = True
+print("app.py: After calling initialize_documents()")
 
 # Page header
 st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
