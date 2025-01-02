@@ -35,7 +35,7 @@ if "documents_loaded" not in st.session_state:
 if not st.session_state.messages:
     try:
         st.session_state.messages.append(HumanMessage(content="Hello"))
-        st.session_state.messages.append(AIMessage(content="Hi there! How can I assist you today?")
+        st.session_state.messages.append(AIMessage(content="Hi there! How can I assist you today."))
     except NameError as e:
         st.error(f"NameError during message initialization: {e}. Please ensure 'langchain' is installed.")
 
