@@ -32,11 +32,10 @@ if platform.system() != "Windows":
     except ImportError:
         print("rag_methods.py: Warning: pysqlite3 not imported. This might cause issues with SQLite on Streamlit Cloud.")
     pass
-
 @st.cache_resource()
 def initialize_pinecone():
-    pinecone_api_key = st.secrets.get("PINECONE_API_KEY")
-    pinecone_environment = st.secrets.get("PINECONE_ENVIRONMENT")
+    pinecone_api_key = os.environ.get("PINECONE_API_KEY")
+    pinecone_environment = os.environ.get("PINECONE_ENVIRONMENT")
     if not pinecone_api_key or not pinecone_environment:
         print("rag_methods.py: Pinecone API key and environment not found in environment variables.")
         return None  # Or handle this case as needed
