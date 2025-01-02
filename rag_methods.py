@@ -21,18 +21,18 @@ from pinecone import Pinecone, ServerlessSpec
 DB_DOCS_LIMIT = 10
 
 
-
+index_name = "langchain-rag"
 def initialize_pinecone():
     """Initialize Pinecone client using the new Pinecone class"""
     pc = Pinecone(
         api_key=st.secrets.get("PINECONE_API_KEY")
     )
     
-    index_name = "langchain-rag"
+    
     
     # Create index if it doesn't exist
     if index_name not in pc.list_indexes().names():
-        index = pc.create_index(
+        pc.create_index(
             name=index_name,
             dimension=384,  # Update dimension to match your embedding model
             metric='cosine',
@@ -42,7 +42,7 @@ def initialize_pinecone():
             )
         )
     
-    return index
+    return pinecone.Index(index_name),index_name
 
 
 def initialize_vector_db(docs: List[Document]) -> Pinecone:
