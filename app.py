@@ -17,7 +17,7 @@ from pathlib import Path
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage, AIMessage
 from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db, initialize_documents
-
+print(f"Imported rag_methods from: {rag_methods.__file__}")
 # Streamlit page configuration
 st.set_page_config(
     page_title="RAG Chat App",
