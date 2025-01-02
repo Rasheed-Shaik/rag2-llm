@@ -76,11 +76,13 @@ with st.sidebar:
         st.session_state.use_rag = False  # Default to False
 
     # Disable RAG toggle if vector_db is not initialized
+    print(f"app.py: Before RAG toggle - st.session_state.vector_db is {st.session_state.vector_db}") # Added log
     st.session_state.use_rag = st.toggle(
         "Enable RAG",
         value=st.session_state.vector_db is not None,
         disabled=st.session_state.vector_db is None
     )
+    print(f"app.py: After RAG toggle - st.session_state.use_rag is {st.session_state.use_rag}") # Added log
 
     if st.button("Clear Chat", type="primary"):
         st.session_state.messages = [

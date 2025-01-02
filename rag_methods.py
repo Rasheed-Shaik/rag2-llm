@@ -72,7 +72,7 @@ def save_document_metadata(doc_name: str, doc_type: str):
 
         metadata_doc = Document(
             page_content=json.dumps(metadata),
-            metadata={"source": doc_name}
+            metadata={"source": doc_name, "session_id": st.session_state.session_id} # Added session_id to metadata
         )
 
         vectorstore = LangchainPinecone(index, embedding_function, METADATA_NAMESPACE)
@@ -114,19 +114,19 @@ def load_persisted_documents():
 
     try:
         print(f"Current session_id: {st.session_state.session_id}") # Log session ID
-        # TEMPORARY: Removing session_id filter for testing
         results = metadata_store.similarity_search(
             "document metadata",
             k=100,
-            # filter={"session_id": st.session_state.session_id} # Original filtering
+            filter={"session_id": st.session_state.session_id} # Reinstated session_id filter
         )
         print(f"Number of metadata results found: {len(results)}") # Log results
 
+        st.session_state.rag_sources = [] # Clear existing sources before loading
         for result in results:
             try:
                 metadata = json.loads(result.page_content)
                 print(f"Loaded metadata: {metadata}") # Log loaded metadata
-                if metadata["name"] not in st.session_state.rag_sources:
+                if metadata["session_id"] == st.session_state.session_id and metadata["name"] not in st.session_state.rag_sources:
                     st.session_state.rag_sources.append(metadata["name"])
             except json.JSONDecodeError:
                 st.error(f"Error decoding metadata: {result.page_content}")
@@ -207,7 +207,6 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
                     save_document_metadata(doc_name, doc_type)
                 else:
                     st.error("Failed to re-initialize vector DB.")
-
     except Exception as e:
         st.error(f"Document processing error: {str(e)}")
         print(f"Error details in process_documents: {str(e)}") # Added log
