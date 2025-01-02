@@ -39,6 +39,8 @@ if "session_id" not in st.session_state:
 elif "rag_sources" not in st.session_state:
     st.session_state.rag_sources = []
     # initialize_documents() # Load persisted documents on startup - consider lazy loading
+elif "rag_sources" not in st.session_state:
+    st.session_state.rag_sources = []
 
 # Page header
 st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
@@ -92,7 +94,8 @@ with st.sidebar:
     if url_input:
         load_url_to_db(url_input)
 
-    if "rag_sources" in st.session_state:  # Check if rag_sources is initialized
+    # Ensure rag_sources is initialized before using it
+    if "rag_sources" in st.session_state:
         with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})", on_change=lambda: initialize_documents()): # Trigger on expand
             st.write(st.session_state.rag_sources)
 
