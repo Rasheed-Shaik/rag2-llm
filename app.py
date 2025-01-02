@@ -35,10 +35,10 @@ if "session_id" not in st.session_state:
         {"role": "user", "content": "Hello"},
         {"role": "assistant", "content": "Hi there! How can I assist you today?"}
     ]
-    initialize_documents()  # Load persisted documents on startup
+    # initialize_documents()  # Remove this line
 elif "rag_sources" not in st.session_state:
     st.session_state.rag_sources = []
-    initialize_documents()
+    # initialize_documents() # Remove this line
 
 # Page header
 st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
@@ -92,7 +92,7 @@ with st.sidebar:
     if url_input:
         load_url_to_db(url_input)
 
-    with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
+    with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})", on_change=initialize_documents): # Trigger on expand
         st.write(st.session_state.rag_sources)
 
 # Main chat interface

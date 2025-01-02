@@ -75,21 +75,33 @@ def save_document_metadata(doc_name: str, doc_type: str):
     except Exception as e:
         st.error(f"Error saving document metadata: {str(e)}")
 
+def get_metadata_store():
+    """Get or initialize the metadata store."""
+    if "metadata_store" not in st.session_state:
+        try:
+            embedding_function = get_embedding_function()
+            index = initialize_pinecone()
+
+            st.session_state.metadata_store = LangchainPinecone(
+                index,
+                embedding=embedding_function,
+                namespace=METADATA_NAMESPACE,
+                text_key="page_content"
+            )
+        except Exception as e:
+            st.error(f"Error initializing metadata store: {str(e)}")
+            return None
+    return st.session_state.metadata_store
+
 def load_persisted_documents():
     """Load document metadata from Pinecone"""
+    metadata_store = get_metadata_store()
+    if not metadata_store:
+        return
+
     try:
-        embedding_function = get_embedding_function()
-        index = initialize_pinecone()
-
-        st.session_state.metadata_store = LangchainPinecone(
-            index,
-            embedding=embedding_function,
-            namespace=METADATA_NAMESPACE,
-            text_key="page_content"  # Add text_key here
-        )
-
         # Query all documents for the current session
-        results = st.session_state.metadata_store.similarity_search(
+        results = metadata_store.similarity_search(
             "document metadata",
             k=100, # Fetch a reasonable number of results
             filter={"session_id": st.session_state.session_id}
@@ -107,7 +119,11 @@ def load_persisted_documents():
     except Exception as e:
         st.error(f"Error loading persisted documents: {str(e)}")
 
-# rag_methods.py
+def initialize_documents():
+    """Load document metadata from Pinecone on startup"""
+    load_persisted_documents()
+
+
 def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
     """Initialize vector database with provided documents"""
     try:
