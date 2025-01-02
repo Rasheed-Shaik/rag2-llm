@@ -1,9 +1,10 @@
+# rag_methods.py
 import streamlit as st
 import os
 import tempfile
 from typing import List
 from pathlib import Path
-from langchain.schema import Document
+from langchain.schema import Document, BaseMessage, HumanMessage, AIMessage
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain_community.document_loaders import (
     WebBaseLoader,
@@ -23,16 +24,15 @@ DB_DOCS_LIMIT = 10
 INDEX_NAME = "langchain-rag"
 METADATA_NAMESPACE = "document_metadata"
 
-def initialize_pinecone():
-    """Initialize Pinecone client and return the index"""
-    pc = Pinecone(
+@st.cache_resource()
+def get_pinecone_index():
+    pinecone_client = Pinecone(
         api_key=st.secrets.get("PINECONE_API_KEY")
     )
-    
-    # Create index if it doesn't exist
-    existing_indexes = pc.list_indexes().names()
+    existing_indexes = pinecone_client.list_indexes().names()
     if INDEX_NAME not in existing_indexes:
-        pc.create_index(
+        st.info(f"Creating Pinecone index '{INDEX_NAME}'...")
+        pinecone_client.create_index(
             name=INDEX_NAME,
             dimension=384,  # dimension for BAAI text embeddings
             metric='cosine',
@@ -41,134 +41,152 @@ def initialize_pinecone():
                 region='us-east-1'
             )
         )
-    
-    # Return the index instance
-    return pc.Index(INDEX_NAME)
+        st.success(f"Pinecone index '{INDEX_NAME}' created successfully.")
+    return pinecone_client.Index(INDEX_NAME)
+
+def initialize_pinecone():
+    try:
+        index = get_pinecone_index()
+        return index
+    except Exception as e:
+        st.error(f"Error initializing Pinecone client or creating index: {e}")
+        return None
 
 def get_embedding_function():
-    """Get the embedding function"""
     return HuggingFaceEmbeddings(
         model_name="BAAI/bge-small-en",
         model_kwargs={"trust_remote_code": True},
         encode_kwargs={"normalize_embeddings": True}
     )
 
-def create_pinecone_instance(namespace: str):
-    """Create a LangchainPinecone instance with consistent parameters"""
-    embedding_function = get_embedding_function()
-    index = initialize_pinecone()  # Get the index instance
-    
-    return LangchainPinecone(
-        embedding=embedding_function,
-        index=index,  # Pass the index instance directly
-        text_key="text",
-        namespace=namespace
-    )
-
-
 def save_document_metadata(doc_name: str, doc_type: str):
-    """Save document metadata to Pinecone"""
     try:
+        embedding_function = get_embedding_function()
+        index = initialize_pinecone()
+
         metadata = {
             "name": doc_name,
             "type": doc_type,
             "session_id": st.session_state.session_id
         }
-        
-        # Create a metadata document
+
         metadata_doc = Document(
             page_content=json.dumps(metadata),
-            metadata={"namespace": METADATA_NAMESPACE}
+            metadata={"source": doc_name}
         )
-        
-        # Initialize vector store for metadata if not exists
-        if "metadata_store" not in st.session_state:
-            st.session_state.metadata_store = create_pinecone_instance(METADATA_NAMESPACE)
-            st.session_state.metadata_store.add_documents([metadata_doc])
-        else:
-            st.session_state.metadata_store.add_documents([metadata_doc])
-            
+
+        vectorstore = LangchainPinecone(index, embedding_function, METADATA_NAMESPACE)
+        vectorstore.add_documents([metadata_doc])
+
     except Exception as e:
         st.error(f"Error saving document metadata: {str(e)}")
 
+def get_metadata_store():
+    if "metadata_store" not in st.session_state:
+        try:
+            embedding_function = get_embedding_function()
+            index = initialize_pinecone()
+
+            st.session_state.metadata_store = LangchainPinecone(
+                index,
+                embedding=embedding_function,
+                namespace=METADATA_NAMESPACE,
+                text_key="page_content"
+            )
+        except Exception as e:
+            st.error(f"Error initializing metadata store: {str(e)}")
+            return None
+    return st.session_state.metadata_store
+
 def load_persisted_documents():
-    """Load document metadata from Pinecone"""
+    metadata_store = get_metadata_store()
+    if not metadata_store:
+        return
+
     try:
-        if "metadata_store" not in st.session_state:
-            st.session_state.metadata_store = create_pinecone_instance(METADATA_NAMESPACE)
-        
-        # Query all documents for the current session
-        results = st.session_state.metadata_store.similarity_search(
+        results = metadata_store.similarity_search(
             "document metadata",
+            k=100,
             filter={"session_id": st.session_state.session_id}
         )
-        
-        # Extract document names from metadata
+
         for result in results:
-            metadata = json.loads(result.page_content)
-            if metadata["name"] not in st.session_state.rag_sources:
-                st.session_state.rag_sources.append(metadata["name"])
-                
+            try:
+                metadata = json.loads(result.page_content)
+                if metadata["name"] not in st.session_state.rag_sources:
+                    st.session_state.rag_sources.append(metadata["name"])
+            except json.JSONDecodeError:
+                st.error(f"Error decoding metadata: {result.page_content}")
+
     except Exception as e:
         st.error(f"Error loading persisted documents: {str(e)}")
 
+def initialize_documents():
+    load_persisted_documents()
+
 def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
-    """Initialize vector database with provided documents"""
     try:
-        index = initialize_pinecone()  # Get the index instance
-        return LangchainPinecone.from_documents(
-            documents=docs,
-            embedding=get_embedding_function(),
-            index=index,  # Pass the index instance directly
-            text_key="text",
-            namespace=f"ns_{st.session_state.session_id}"
+        embedding_function = get_embedding_function()
+        index = initialize_pinecone()
+
+        if index is None:
+            st.error("Failed to initialize Pinecone index.")
+            return None
+
+        vector_db = LangchainPinecone(
+            index=index,
+            embedding=embedding_function,
+            namespace=f"ns_{st.session_state.session_id}",
+            text_key="page_content",
         )
-        
+        vector_db.add_documents(documents=docs)
+        return vector_db
     except Exception as e:
         st.error(f"Vector DB initialization failed: {str(e)}")
         return None
 
-# Rest of the code remains the same...
-
+# rag_methods.py
 def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> None:
-    """Process and load documents into vector database"""
     if not docs:
         return
-        
+
     try:
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200
         )
-        
+
         chunks = text_splitter.split_documents(docs)
         if not chunks:
             st.warning("No content extracted from documents.")
             return
-            
+
         if st.session_state.vector_db is None:
             vector_db = initialize_vector_db(chunks)
             if vector_db:
                 st.session_state.vector_db = vector_db
                 save_document_metadata(doc_name, doc_type)
+            else:
+                st.error("Failed to initialize new vector DB.")
         else:
             try:
                 st.session_state.vector_db.add_documents(chunks)
                 save_document_metadata(doc_name, doc_type)
-            except Exception:
+            except Exception as e:
+                st.error(f"Error adding documents to existing DB: {str(e)}")
                 vector_db = initialize_vector_db(chunks)
                 if vector_db:
                     st.session_state.vector_db = vector_db
                     save_document_metadata(doc_name, doc_type)
-                    
+                else:
+                    st.error("Failed to re-initialize vector DB.")
+
     except Exception as e:
         st.error(f"Document processing error: {str(e)}")
 
-def load_doc_to_db():
-    """Load documents to vector database"""
-    if "rag_docs" in st.session_state and st.session_state.rag_docs:
-        docs = []
-        for doc_file in st.session_state.rag_docs:
+def load_doc_to_db(uploaded_files):
+    if uploaded_files:
+        for doc_file in uploaded_files:
             if doc_file.name not in st.session_state.rag_sources:
                 if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
                     st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
@@ -191,83 +209,73 @@ def load_doc_to_db():
                         docs = loader.load()
                         process_documents(docs, doc_file.name, doc_file.type)
                         st.session_state.rag_sources.append(doc_file.name)
-                    
+
                     os.unlink(tmp_path)
-                            
+
                 except Exception as e:
                     st.error(f"Error loading {doc_file.name}: {str(e)}")
 
-        if docs:
+        if uploaded_files:
             st.success(f"Documents loaded successfully!")
 
-def load_url_to_db():
-    """Load URL content to vector database"""
-    if "rag_url" in st.session_state and st.session_state.rag_url:
-        url = st.session_state.rag_url
-        if url not in st.session_state.rag_sources:
-            if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
-                st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
-                return
+def load_url_to_db(url):
+    if url and url not in st.session_state.rag_sources:
+        if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
+            st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
+            return
 
-            try:
-                loader = WebBaseLoader(url)
-                docs = loader.load()
-                process_documents(docs, url, "url")
-                st.session_state.rag_sources.append(url)
-                st.success(f"URL content loaded successfully!")
-            except Exception as e:
-                st.error(f"Error loading URL: {str(e)}")
+        try:
+            loader = WebBaseLoader(url)
+            docs = loader.load()
+            process_documents(docs, url, "url")
+            st.session_state.rag_sources.append(url)
+            st.success(f"URL content loaded successfully!")
+        except Exception as e:
+            st.error(f"Error loading URL: {str(e)}")
 
 def initialize_documents():
-    """Load document metadata from Pinecone on startup"""
     load_persisted_documents()
 
 def get_rag_chain(llm):
-    """Create RAG chain for conversational retrieval"""
     retriever = st.session_state.vector_db.as_retriever(
         search_kwargs={"k": 3}
     )
-    
+
     context_prompt = ChatPromptTemplate.from_messages([
         MessagesPlaceholder(variable_name="messages"),
         ("user", "{input}"),
         ("user", "Generate a search query based on our conversation, focusing on recent messages.")
     ])
-    
+
     retriever_chain = create_history_aware_retriever(llm, retriever, context_prompt)
-    
+
     response_prompt = ChatPromptTemplate.from_messages([
         ("system", "Answer based on the context and your knowledge. Context: {context}"),
         MessagesPlaceholder(variable_name="messages"),
         ("user", "{input}")
     ])
-    
+
     return create_retrieval_chain(
         retriever_chain,
         create_stuff_documents_chain(llm, response_prompt)
     )
 
-def stream_llm_response(llm_stream, messages):
-    """Stream LLM response without RAG"""
+def stream_llm_response(llm_stream, messages: List[BaseMessage]):
     response_message = ""
     for chunk in llm_stream.stream(messages):
         response_message += chunk.content
         yield chunk.content
-    st.session_state.messages.append({"role": "assistant", "content": response_message})
+    st.session_state.messages.append(AIMessage(content=response_message))
 
-def stream_llm_rag_response(llm_stream, messages):
-    """Stream RAG-enhanced LLM response"""
+def stream_llm_rag_response(llm_stream, messages: List[BaseMessage]):
     rag_chain = get_rag_chain(llm_stream)
-    response_message = "🔍 "
-    
+    response_message = ""
+
     for chunk in rag_chain.pick("answer").stream({
         "messages": messages[:-1],
         "input": messages[-1].content
     }):
         response_message += chunk
         yield chunk
-        
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": response_message
-    })
+
+    st.session_state.messages.append(AIMessage(content=response_message))
