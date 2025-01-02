@@ -56,11 +56,15 @@ with st.sidebar:
 
     # Model Selection and Chat Controls
     model = "google/gemini-1.5-flash-latest"  # Using a stable model
-    st.session_state.use_rag = st.toggle(
-        "Enable RAG",
-        value=st.session_state.vector_db is not None,
+    if "use_rag" not in st.session_state:
+      st.session_state.use_rag = st.session_state.vector_db is not None
+      st.session_state.use_rag = st.toggle(
+       "Enable RAG",
+        value=st.session_state.vector_db is not None,  # Ensure this is based on the current state
         disabled=st.session_state.vector_db is None
-    )
+)
+
+
     
     if st.button("Clear Chat", type="primary"):
         st.session_state.messages = [

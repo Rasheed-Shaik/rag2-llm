@@ -161,6 +161,7 @@ def initialize_documents():
     doc_dir = Path("docs")
     if doc_dir.exists():
         for doc_file in doc_dir.iterdir():
+            # Initialize rag_sources in session state before loading
             if doc_file.name not in st.session_state.rag_sources:
                 try:
                     loader = None
@@ -178,7 +179,6 @@ def initialize_documents():
 
                 except Exception as e:
                     st.error(f"Error loading {doc_file.name}: {str(e)}")
-
 
 def get_rag_chain(llm):
     """Create RAG chain for conversational retrieval"""
