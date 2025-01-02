@@ -11,7 +11,7 @@ from langchain_community.document_loaders import (
     Docx2txtLoader,
     TextLoader
 )
-from langchain_community.vectorstores import Pinecone
+from langchain_community.vectorstores import Pinecone as LangchainPinecone
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
@@ -19,22 +19,20 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from pinecone import Pinecone, ServerlessSpec
 
 DB_DOCS_LIMIT = 10
+INDEX_NAME = "langchain-rag"
 
-
-index_name = "langchain-rag"
 def initialize_pinecone():
     """Initialize Pinecone client using the new Pinecone class"""
     pc = Pinecone(
         api_key=st.secrets.get("PINECONE_API_KEY")
     )
     
-    
-    
     # Create index if it doesn't exist
-    if index_name not in pc.list_indexes().names():
+    existing_indexes = pc.list_indexes().names()
+    if INDEX_NAME not in existing_indexes:
         pc.create_index(
-            name=index_name,
-            dimension=384,  # Update dimension to match your embedding model
+            name=INDEX_NAME,
+            dimension=384,  # dimension for BAAI text embeddings
             metric='cosine',
             spec=ServerlessSpec(
                 cloud='aws',
@@ -42,31 +40,32 @@ def initialize_pinecone():
             )
         )
     
-    return Pinecone.Index(index_name),index_name
+    # Get the index
+    index = pc.Index(INDEX_NAME)
+    return index, INDEX_NAME
 
-
-def initialize_vector_db(docs: List[Document]) -> Pinecone:
+def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
     """Initialize vector database with provided documents"""
     try:
         embedding_function = HuggingFaceEmbeddings(
-            model_name="BAAI/bge-small-en",  # Changed to BAAI's model
+            model_name="BAAI/bge-small-en",
             model_kwargs={"trust_remote_code": True},
-            encode_kwargs={"normalize_embeddings": True}  # Recommended for BAAI embeddings
+            encode_kwargs={"normalize_embeddings": True}
         )
         
-        pinecone_index = initialize_pinecone()
+        # Get both the index and index_name
+        pinecone_index, index_name = initialize_pinecone()
         
-        return Pinecone.from_documents(
+        return LangchainPinecone.from_documents(
             documents=docs,
             embedding=embedding_function,
-            index_name=pinecone_index.name,
+            index_name=index_name,
             namespace=f"ns_{st.session_state.session_id}"
         )
         
     except Exception as e:
         st.error(f"Vector DB initialization failed: {str(e)}")
         return None
-
 
 def process_documents(docs: List[Document]) -> None:
     """Process and load documents into vector database"""
