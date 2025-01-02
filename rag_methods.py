@@ -99,30 +99,41 @@ def get_metadata_store():
     return st.session_state.metadata_store
 
 def load_persisted_documents():
+    print("Entering load_persisted_documents()")  # Logging entry
     metadata_store = get_metadata_store()
     if not metadata_store:
+        print("Metadata store is not initialized.")
         return
 
     try:
+        print(f"Current session_id: {st.session_state.session_id}") # Log session ID
+        # TEMPORARY: Removing session_id filter for testing
         results = metadata_store.similarity_search(
             "document metadata",
             k=100,
-            filter={"session_id": st.session_state.session_id}
+            # filter={"session_id": st.session_state.session_id} # Original filtering
         )
+        print(f"Number of metadata results found: {len(results)}") # Log results
 
         for result in results:
             try:
                 metadata = json.loads(result.page_content)
+                print(f"Loaded metadata: {metadata}") # Log loaded metadata
                 if metadata["name"] not in st.session_state.rag_sources:
                     st.session_state.rag_sources.append(metadata["name"])
             except json.JSONDecodeError:
                 st.error(f"Error decoding metadata: {result.page_content}")
 
+        print(f"rag_sources after loading: {st.session_state.rag_sources}") # Log final rag_sources
+
     except Exception as e:
         st.error(f"Error loading persisted documents: {str(e)}")
+        print(f"Error details: {str(e)}") # Log error details
 
 def initialize_documents():
+    print("Entering initialize_documents()") # Log entry
     load_persisted_documents()
+    print("Exiting initialize_documents()") # Log exit
 
 def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
     try:
@@ -133,10 +144,12 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
             st.error("Failed to initialize Pinecone index.")
             return None
 
+        namespace = f"ns_{st.session_state.session_id}"
+        print(f"Initializing vector DB with namespace: {namespace}") # Log namespace
         vector_db = LangchainPinecone(
             index=index,
             embedding=embedding_function,
-            namespace=f"ns_{st.session_state.session_id}",
+            namespace=namespace,
             text_key="page_content",
         )
         vector_db.add_documents(documents=docs)
@@ -164,7 +177,6 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
         if st.session_state.vector_db is None:
             vector_db = initialize_vector_db(chunks)
             if vector_db:
-                st.session_state.vector_db = vector_db
                 save_document_metadata(doc_name, doc_type)
             else:
                 st.error("Failed to initialize new vector DB.")
@@ -176,7 +188,6 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
                 st.error(f"Error adding documents to existing DB: {str(e)}")
                 vector_db = initialize_vector_db(chunks)
                 if vector_db:
-                    st.session_state.vector_db = vector_db
                     save_document_metadata(doc_name, doc_type)
                 else:
                     st.error("Failed to re-initialize vector DB.")
@@ -234,7 +245,9 @@ def load_url_to_db(url):
             st.error(f"Error loading URL: {str(e)}")
 
 def initialize_documents():
+    print("Entering initialize_documents()") # Log entry
     load_persisted_documents()
+    print("Exiting initialize_documents()") # Log exit
 
 def get_rag_chain(llm):
     retriever = st.session_state.vector_db.as_retriever(
