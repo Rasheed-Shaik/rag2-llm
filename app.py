@@ -1,140 +1,311 @@
+# rag_methods.py
 import streamlit as st
 import os
-import uuid
-
-# SQLite fix for Streamlit Cloud
-import platform
-if platform.system() != "Windows":
-    try:
-        __import__('pysqlite3')
-        import sys
-        sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-    except ImportError:
-        pass
-
+import tempfile
+from typing import List
 from pathlib import Path
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import HumanMessage, AIMessage
-from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db, initialize_documents, initialize_vector_db  # Ensure initialize_vector_db is imported
-
-# Streamlit page configuration - MOVE THIS TO THE TOP
-st.set_page_config(
-    page_title="RAG Chat App",
-    page_icon="📚",
-    layout="centered",
-    initial_sidebar_state="expanded"
+from langchain.schema import Document, BaseMessage, HumanMessage, AIMessage
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_community.document_loaders import (
+    WebBaseLoader,
+    PyPDFLoader,
+    Docx2txtLoader,
+    TextLoader
 )
+from langchain_community.vectorstores import Pinecone as LangchainPinecone
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.chains import create_history_aware_retriever, create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from pinecone import Pinecone, ServerlessSpec
+import json
 
-# Initialize session states (move to the very top, after set_page_config)
-if "session_id" not in st.session_state:
-    st.session_state.session_id = str(uuid.uuid4())
-    st.rerun()  # Rerun to ensure session_id is immediately available
-if "rag_sources" not in st.session_state:
-    st.session_state.rag_sources = []
-if "vector_db" not in st.session_state:
-    st.session_state.vector_db = None
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "documents_loaded" not in st.session_state:
-    st.session_state.documents_loaded = False
+DB_DOCS_LIMIT = 10
+INDEX_NAME = "langchain-rag"
+METADATA_NAMESPACE = "document_metadata"
 
-# Initialize default messages only if messages is empty
-if not st.session_state.messages:
+@st.cache_resource()
+def get_pinecone_index():
+    pinecone_client = Pinecone(
+        api_key=st.secrets.get("PINECONE_API_KEY")
+    )
+    existing_indexes = pinecone_client.list_indexes().names()
+    if INDEX_NAME not in existing_indexes:
+        st.info(f"Creating Pinecone index '{INDEX_NAME}'...")
+        pinecone_client.create_index(
+            name=INDEX_NAME,
+            dimension=384,  # dimension for BAAI text embeddings
+            metric='cosine',
+            spec=ServerlessSpec(
+                cloud='aws',
+                region='us-east-1'
+            )
+        )
+        st.success(f"Pinecone index '{INDEX_NAME}' created successfully.")
+    return pinecone_client.Index(INDEX_NAME)
+
+def initialize_pinecone():
     try:
-        st.session_state.messages.append(HumanMessage(content="Hello"))
-        st.session_state.messages.append(AIMessage(content="Hi there! How can I assist you today."))
-    except NameError as e:
-        st.error(f"NameError during message initialization: {e}. Please ensure 'langchain' is installed.")
+        index = get_pinecone_index()
+        return index
+    except Exception as e:
+        st.error(f"Error initializing Pinecone client or creating index: {e}")
+        return None
 
-# Initialize persisted documents on app start/reload (call unconditionally)
-print("app.py: Before calling initialize_documents()")  # Added print statement
-initialize_documents()
-print("app.py: After calling initialize_documents()")   # Added print statement
+def get_embedding_function():
+    return HuggingFaceEmbeddings(
+        model_name="BAAI/bge-small-en",
+        model_kwargs={"trust_remote_code": True},
+        encode_kwargs={"normalize_embeddings": True}
+    )
 
+def save_document_metadata(doc_name: str, doc_type: str):
+    try:
+        embedding_function = get_embedding_function()
+        index = initialize_pinecone()
 
+        metadata = {
+            "name": doc_name,
+            "type": doc_type,
+            "session_id": st.session_state.session_id
+        }
 
-# Page header
-st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
-
-# Sidebar configuration
-with st.sidebar:
-    # API Key Management - Check secrets first, then environment, then input
-    google_api_key = st.secrets.get("google_api_key", "") if hasattr(st, "secrets") else ""
-
-    # Only show API input if no key in secrets
-    if not google_api_key:
-        google_api_key = st.text_input(
-            "Google API Key",
-            type="password",
-            key="google_api_key"
+        metadata_doc = Document(
+            page_content=json.dumps(metadata),
+            metadata={"source": doc_name}
         )
 
-    # Model Selection and Chat Controls
-    model = "google/gemini-1.5-flash-latest"  # Using a stable model
-    if "use_rag" not in st.session_state:
-        st.session_state.use_rag = False  # Default to False
+        vectorstore = LangchainPinecone(index, embedding_function, METADATA_NAMESPACE)
+        vectorstore.add_documents([metadata_doc])
 
-    # Disable RAG toggle if vector_db is not initialized
-    st.session_state.use_rag = st.toggle(
-        "Enable RAG",
-        value=st.session_state.vector_db is not None,
-        disabled=st.session_state.vector_db is None
-    )
+    except Exception as e:
+        st.error(f"Error saving document metadata: {str(e)}")
 
-    if st.button("Clear Chat", type="primary"):
-        st.session_state.messages = [
-            HumanMessage(content="Hello"),
-            AIMessage(content="Hi there! How can I assist you today?")
-        ]
-        st.rerun()
+def get_metadata_store():
+    print("Entering get_metadata_store()") # Log entry
+    if "metadata_store" not in st.session_state:
+        print("metadata_store not in session_state, initializing...")
+        try:
+            embedding_function = get_embedding_function()
+            index = initialize_pinecone()
 
-    # RAG Document Management
-    st.header("📚 Knowledge Base")
-    uploaded_files = st.file_uploader(
-        "Upload Documents",
-        type=["pdf", "txt", "docx", "md"],
-        accept_multiple_files=True,
-        key="rag_docs"
-    )
-    if uploaded_files:
-        load_doc_to_db(uploaded_files)
+            st.session_state.metadata_store = LangchainPinecone(
+                index,
+                embedding=embedding_function,
+                namespace=METADATA_NAMESPACE,
+                text_key="page_content"
+            )
+            print("metadata_store initialized successfully.")
+        except Exception as e:
+            st.error(f"Error initializing metadata store: {str(e)}")
+            print(f"Error details in get_metadata_store: {str(e)}")
+            return None
+    else:
+        print("metadata_store found in session_state.")
+    print("Exiting get_metadata_store()") # Log exit
+    return st.session_state.metadata_store
 
-    url_input = st.text_input(
-        "Add Website URL",
-        placeholder="https://example.com",
-        key="rag_url"
-    )
-    if url_input:
-        load_url_to_db(url_input)
+def load_persisted_documents():
+    print("Entering load_persisted_documents()")  # Logging entry
+    metadata_store = get_metadata_store()
+    if not metadata_store:
+        print("Metadata store is not initialized.")
+        return
 
-    with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
-        st.write(st.session_state.rag_sources)
+    try:
+        print(f"Current session_id: {st.session_state.session_id}") # Log session ID
+        # TEMPORARY: Removing session_id filter for testing
+        results = metadata_store.similarity_search(
+            "document metadata",
+            k=100,
+            # filter={"session_id": st.session_state.session_id} # Original filtering
+        )
+        print(f"Number of metadata results found: {len(results)}") # Log results
 
-# Main chat interface
-if not google_api_key:
-    st.warning("⚠️ No Google API Key found. Please add it to your Streamlit secrets or enter it in the sidebar.")
-else:
-    # Initialize LLM
-    llm = ChatGoogleGenerativeAI(
-        model=model.split("/")[-1],
-        google_api_key=google_api_key,
-        temperature=0.7,
-        streaming=True
-    )
+        for result in results:
+            try:
+                metadata = json.loads(result.page_content)
+                print(f"Loaded metadata: {metadata}") # Log loaded metadata
+                if metadata["name"] not in st.session_state.rag_sources:
+                    st.session_state.rag_sources.append(metadata["name"])
+            except json.JSONDecodeError:
+                st.error(f"Error decoding metadata: {result.page_content}")
 
-    # Display chat messages
-    for message in st.session_state.messages:
-        with st.chat_message(message.type):
-            st.markdown(message.content)
+        print(f"rag_sources after loading: {st.session_state.rag_sources}") # Log final rag_sources
 
-    # Chat input and response
-    if prompt := st.chat_input("Your message"):
-        st.session_state.messages.append(HumanMessage(content=prompt))
-        with st.chat_message("user"):
-            st.markdown(prompt)
+    except Exception as e:
+        st.error(f"Error loading persisted documents: {str(e)}")
+        print(f"Error details: {str(e)}") # Log error details
+    print("Exiting load_persisted_documents()") # Log exit
 
-        with st.chat_message("assistant"):
-            if st.session_state.use_rag and st.session_state.vector_db is not None:
-                st.write_stream(stream_llm_rag_response(llm, st.session_state.messages))
+def initialize_documents():
+    print("Entering initialize_documents()") # Log entry
+    load_persisted_documents()
+    print("Exiting initialize_documents()") # Log exit
+
+def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
+    print("Entering initialize_vector_db with docs:", docs) # Added log
+    try:
+        embedding_function = get_embedding_function()
+        index = initialize_pinecone()
+
+        if index is None:
+            st.error("Failed to initialize Pinecone index.")
+            return None
+
+        namespace = f"ns_{st.session_state.session_id}"
+        print(f"Initializing vector DB with namespace: {namespace}") # Log namespace
+        vector_db = LangchainPinecone(
+            index=index,
+            embedding=embedding_function,
+            namespace=namespace,
+            text_key="page_content",
+        )
+        vector_db.add_documents(documents=docs)
+        print("Vector DB initialized successfully.") # Added log
+        return vector_db
+    except Exception as e:
+        st.error(f"Vector DB initialization failed: {str(e)}")
+        print(f"Error details in initialize_vector_db: {str(e)}") # Added log
+        return None
+
+def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> None:
+    print("Entering process_documents with doc_name:", doc_name) # Added log
+    if not docs:
+        return
+
+    try:
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200
+        )
+
+        chunks = text_splitter.split_documents(docs)
+        if not chunks:
+            st.warning("No content extracted from documents.")
+            return
+
+        if st.session_state.vector_db is None:
+            print("vector_db is None, initializing...") # Added log
+            vector_db = initialize_vector_db(chunks)
+            if vector_db:
+                st.session_state.vector_db = vector_db  # Ensure this assignment happens
+                print("vector_db initialized and assigned to session_state.") # Added log
+                save_document_metadata(doc_name, doc_type)
             else:
-                st.write_stream(stream_llm_response(llm, st.session_state.messages))
+                st.error("Failed to initialize new vector DB.")
+        else:
+            print("vector_db exists, adding documents...") # Added log
+            try:
+                st.session_state.vector_db.add_documents(chunks)
+                save_document_metadata(doc_name, doc_type)
+            except Exception as e:
+                st.error(f"Error adding documents to existing DB: {str(e)}")
+                vector_db = initialize_vector_db(chunks)
+                if vector_db:
+                    st.session_state.vector_db = vector_db
+                    save_document_metadata(doc_name, doc_type)
+                else:
+                    st.error("Failed to re-initialize vector DB.")
+
+    except Exception as e:
+        st.error(f"Document processing error: {str(e)}")
+        print(f"Error details in process_documents: {str(e)}") # Added log
+
+def load_doc_to_db(uploaded_files):
+    if uploaded_files:
+        for doc_file in uploaded_files:
+            if doc_file.name not in st.session_state.rag_sources:
+                if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
+                    st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
+                    break
+
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                        tmp_file.write(doc_file.getvalue())
+                        tmp_path = tmp_file.name
+
+                    loader = None
+                    if doc_file.type == "application/pdf":
+                        loader = PyPDFLoader(tmp_path)
+                    elif doc_file.name.endswith(".docx"):
+                        loader = Docx2txtLoader(tmp_path)
+                    elif doc_file.type in ["text/plain", "text/markdown"]:
+                        loader = TextLoader(tmp_path)
+
+                    if loader:
+                        docs = loader.load()
+                        process_documents(docs, doc_file.name, doc_file.type)
+                        st.session_state.rag_sources.append(doc_file.name)
+
+                    os.unlink(tmp_path)
+
+                except Exception as e:
+                    st.error(f"Error loading {doc_file.name}: {str(e)}")
+
+        if uploaded_files:
+            st.success(f"Documents loaded successfully!")
+
+def load_url_to_db(url):
+    if url and url not in st.session_state.rag_sources:
+        if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
+            st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
+            return
+
+        try:
+            loader = WebBaseLoader(url)
+            docs = loader.load()
+            process_documents(docs, url, "url")
+            st.session_state.rag_sources.append(url)
+            st.success(f"URL content loaded successfully!")
+        except Exception as e:
+            st.error(f"Error loading URL: {str(e)}")
+
+def initialize_documents():
+    print("Entering initialize_documents()") # Log entry
+    load_persisted_documents()
+    print("Exiting initialize_documents()") # Log exit
+
+def get_rag_chain(llm):
+    retriever = st.session_state.vector_db.as_retriever(
+        search_kwargs={"k": 3}
+    )
+
+    context_prompt = ChatPromptTemplate.from_messages([
+        MessagesPlaceholder(variable_name="messages"),
+        ("user", "{input}"),
+        ("user", "Generate a search query based on our conversation, focusing on recent messages.")
+    ])
+
+    retriever_chain = create_history_aware_retriever(llm, retriever, context_prompt)
+
+    response_prompt = ChatPromptTemplate.from_messages([
+        ("system", "Answer based on the context and your knowledge. Context: {context}"),
+        MessagesPlaceholder(variable_name="messages"),
+        ("user", "{input}")
+    ])
+
+    return create_retrieval_chain(
+        retriever_chain,
+        create_stuff_documents_chain(llm, response_prompt)
+    )
+
+def stream_llm_response(llm_stream, messages: List[BaseMessage]):
+    response_message = ""
+    for chunk in llm_stream.stream(messages):
+        response_message += chunk.content
+        yield chunk.content
+    st.session_state.messages.append(AIMessage(content=response_message))
+
+def stream_llm_rag_response(llm_stream, messages: List[BaseMessage]):
+    rag_chain = get_rag_chain(llm_stream)
+    response_message = ""
+
+    for chunk in rag_chain.pick("answer").stream({
+        "messages": messages[:-1],
+        "input": messages[-1].content
+    }):
+        response_message += chunk
+        yield chunk
+
+    st.session_state.messages.append(AIMessage(content=response_message))
