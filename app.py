@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import os
 import uuid
@@ -18,7 +17,15 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage, AIMessage
 from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db, initialize_documents, initialize_vector_db  # Ensure initialize_vector_db is imported
 
-# Initialize session states (move to the very top)
+# Streamlit page configuration - MOVE THIS TO THE TOP
+st.set_page_config(
+    page_title="RAG Chat App",
+    page_icon="📚",
+    layout="centered",
+    initial_sidebar_state="expanded"
+)
+
+# Initialize session states (move to the very top, after set_page_config)
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
     st.rerun()  # Rerun to ensure session_id is immediately available
@@ -50,14 +57,6 @@ if st.session_state.vector_db is None and st.session_state.rag_sources:
             st.success("Knowledge Base initialized.")
         except Exception as e:
             st.error(f"Error initializing Knowledge Base: {e}")
-
-# Streamlit page configuration
-st.set_page_config(
-    page_title="RAG Chat App",
-    page_icon="📚",
-    layout="centered",
-    initial_sidebar_state="expanded"
-)
 
 # Page header
 st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
