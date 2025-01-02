@@ -3,13 +3,14 @@ import os
 import tempfile
 from typing import List
 from pathlib import Path
-from langchain.schema import Document, HumanMessage # Import HumanMessage here
+from langchain.schema import Document, HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader, WebBaseLoader
 from langchain_community.vectorstores import Pinecone as LangchainPinecone
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from pinecone import Pinecone, ServerlessSpec
+import pinecone  # Add this import statement
+from pinecone import ServerlessSpec
 import json
 import streamlit as st  # Keep this for potential caching decorators
 
@@ -34,8 +35,8 @@ if platform.system() != "Windows":
 
 @st.cache_resource()
 def initialize_pinecone():
-    pinecone_api_key = os.environ.get("PINECONE_API_KEY")
-    pinecone_environment = os.environ.get("PINECONE_ENVIRONMENT")
+    pinecone_api_key = st.secrets.get("PINECONE_API_KEY")
+    pinecone_environment = st.secrets.get("PINECONE_ENVIRONMENT")
     if not pinecone_api_key or not pinecone_environment:
         print("rag_methods.py: Pinecone API key and environment not found in environment variables.")
         return None  # Or handle this case as needed
@@ -47,7 +48,7 @@ def initialize_pinecone():
             INDEX_NAME,
             dimension=768,  # Adjust based on your embedding model
             metric='cosine',
-            spec=ServerlessSpec(cloud='aws', region='us-west-2') # Adjust region as needed
+            spec=ServerlessSpec(cloud='aws', region='us-east-1') # Adjust region as needed
         )
     return pinecone.Index(INDEX_NAME)
 
