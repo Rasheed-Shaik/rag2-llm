@@ -18,6 +18,9 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage, AIMessage
 from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db, initialize_documents
 
+# Initialize persisted documents on app start/reload
+initialize_documents()
+
 # Streamlit page configuration
 st.set_page_config(
     page_title="RAG Chat App",
@@ -96,10 +99,6 @@ with st.sidebar:
 
     with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
         st.write(st.session_state.rag_sources)
-        if "documents_loaded" not in st.session_state:
-            if "session_id" in st.session_state:  # Ensure session_id is initialized
-                initialize_documents()
-                st.session_state.documents_loaded = True
 
 # Main chat interface
 if not google_api_key:
