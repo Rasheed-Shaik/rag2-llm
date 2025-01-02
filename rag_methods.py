@@ -227,4 +227,52 @@ def initialize_documents():
     """Load document metadata from Pinecone on startup"""
     load_persisted_documents()
 
-# Rest of the code remains the same...
+def get_rag_chain(llm):
+    """Create RAG chain for conversational retrieval"""
+    retriever = st.session_state.vector_db.as_retriever(
+        search_kwargs={"k": 3}
+    )
+    
+    context_prompt = ChatPromptTemplate.from_messages([
+        MessagesPlaceholder(variable_name="messages"),
+        ("user", "{input}"),
+        ("user", "Generate a search query based on our conversation, focusing on recent messages.")
+    ])
+    
+    retriever_chain = create_history_aware_retriever(llm, retriever, context_prompt)
+    
+    response_prompt = ChatPromptTemplate.from_messages([
+        ("system", "Answer based on the context and your knowledge. Context: {context}"),
+        MessagesPlaceholder(variable_name="messages"),
+        ("user", "{input}")
+    ])
+    
+    return create_retrieval_chain(
+        retriever_chain,
+        create_stuff_documents_chain(llm, response_prompt)
+    )
+
+def stream_llm_response(llm_stream, messages):
+    """Stream LLM response without RAG"""
+    response_message = ""
+    for chunk in llm_stream.stream(messages):
+        response_message += chunk.content
+        yield chunk.content
+    st.session_state.messages.append({"role": "assistant", "content": response_message})
+
+def stream_llm_rag_response(llm_stream, messages):
+    """Stream RAG-enhanced LLM response"""
+    rag_chain = get_rag_chain(llm_stream)
+    response_message = "🔍 "
+    
+    for chunk in rag_chain.pick("answer").stream({
+        "messages": messages[:-1],
+        "input": messages[-1].content
+    }):
+        response_message += chunk
+        yield chunk
+        
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": response_message
+    })
