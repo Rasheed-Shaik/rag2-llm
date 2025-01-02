@@ -24,32 +24,12 @@ DB_DOCS_LIMIT = 10
 INDEX_NAME = "langchain-rag"
 METADATA_NAMESPACE = "document_metadata"
 
-
-
-# ... other imports ...
-
-INDEX_NAME = "langchain-rag"  # Ensure this is defined at the top level
-
 def initialize_pinecone():
     """Initialize Pinecone client using the new Pinecone class"""
     pc = Pinecone(
         api_key=st.secrets.get("PINECONE_API_KEY")
     )
-
-    # Create index if it doesn't exist
-    existing_indexes = pc.list_indexes().names()
-    if INDEX_NAME not in existing_indexes:
-        pc.create_index(
-            name=INDEX_NAME,
-            dimension=384,  # dimension for BAAI text embeddings
-            metric='cosine',
-            spec=ServerlessSpec(
-                cloud='aws',
-                region='us-east-1'
-            )
-        )
-
-    return pc.Index(INDEX_NAME)  # Return the Index object
+    return pc.Index(INDEX_NAME)
 
 def get_embedding_function():
     """Get the embedding function"""
@@ -63,8 +43,7 @@ def save_document_metadata(doc_name: str, doc_type: str):
     """Save document metadata to Pinecone"""
     try:
         embedding_function = get_embedding_function()
-        pc = initialize_pinecone()
-        index = pc.Index(INDEX_NAME)
+        index = initialize_pinecone()
 
         metadata = {
             "name": doc_name,
@@ -77,25 +56,23 @@ def save_document_metadata(doc_name: str, doc_type: str):
             metadata={"source": doc_name} # Add source for filtering
         )
 
-        vectorstore = LangchainPinecone(index, embedding_function, METADATA_NAMESPACE)
+        vectorstore = LangchainPinecone(index, embedding_function, METADATA_NAMESPACE, text_key="page_content")
         vectorstore.add_documents([metadata_doc])
 
     except Exception as e:
         st.error(f"Error saving document metadata: {str(e)}")
 
-# rag_methods.py
-# ... other imports ...
-
 def load_persisted_documents():
     """Load document metadata from Pinecone"""
     try:
         embedding_function = get_embedding_function()
-        index = initialize_pinecone() # Get the Pinecone Index object
+        index = initialize_pinecone()
 
         st.session_state.metadata_store = LangchainPinecone(
+            index,
             embedding=embedding_function,
-            index=index, # Use the index object here
-            namespace=METADATA_NAMESPACE
+            namespace=METADATA_NAMESPACE,
+            text_key="page_content"  # Add text_key here
         )
 
         # Query all documents for the current session
@@ -117,42 +94,18 @@ def load_persisted_documents():
     except Exception as e:
         st.error(f"Error loading persisted documents: {str(e)}")
 
-def initialize_vector_db_from_metadata(source_names: List[str]):
-    """Initialize vector database from persisted document chunks."""
-    try:
-        embedding_function = get_embedding_function()
-        pc = initialize_pinecone()
-        index = pc.Index(INDEX_NAME)
-        namespace = f"ns_{st.session_state.session_id}"
-
-        # Check if the namespace already exists (implicitly by checking for vectors)
-        vectorstore = LangchainPinecone(index, embedding_function, namespace)
-        results = vectorstore.similarity_search("test", k=1) # Any query to check for existing vectors
-
-        if results:
-            st.session_state.vector_db = vectorstore
-            print(f"Vector DB re-initialized from existing namespace: {namespace}")
-        else:
-            print(f"No existing vectors found in namespace: {namespace}")
-            st.session_state.vector_db = None # Ensure it's None if no data
-
-    except Exception as e:
-        st.error(f"Error initializing vector DB from metadata: {str(e)}")
-
-# rag_methods.py
-# ... other imports ...
-
 def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
     """Initialize vector database with provided documents"""
     try:
         embedding_function = get_embedding_function()
-        index = initialize_pinecone()  # Get the Pinecone Index object
+        index = initialize_pinecone()
 
         return LangchainPinecone.from_documents(
             documents=docs,
             embedding=embedding_function,
-            index=index,  # Use the index object here
-            namespace=f"ns_{st.session_state.session_id}"
+            index=index,
+            namespace=f"ns_{st.session_state.session_id}",
+            text_key="page_content" # Add text_key here
         )
 
     except Exception as e:
@@ -183,10 +136,9 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
         else:
             try:
                 embedding_function = get_embedding_function()
-                pc = initialize_pinecone()
-                index = pc.Index(INDEX_NAME)
+                index = initialize_pinecone()
                 namespace = f"ns_{st.session_state.session_id}"
-                vectorstore = LangchainPinecone(index, embedding_function, namespace)
+                vectorstore = LangchainPinecone(index, embedding_function, namespace, text_key="page_content")
                 vectorstore.add_documents(chunks)
                 save_document_metadata(doc_name, doc_type)
             except Exception as e:
