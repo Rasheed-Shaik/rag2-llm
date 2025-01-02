@@ -356,7 +356,4 @@ def stream_llm_rag_response(llm_stream, messages: List[BaseMessage]):
         response_message += chunk
         yield chunk
 
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": response_message
-    })
+    st.session_state.messages.append(AIMessage(content=response_message))
