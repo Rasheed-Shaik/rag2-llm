@@ -1,26 +1,9 @@
-# app.py
 import streamlit as st
 import os
 import uuid
-import platform
-from pathlib import Path
-
-# Langchain imports
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import HumanMessage, AIMessage
-
-# Local module import
-from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db, initialize_vector_db, load_rag_sources
-
-# Streamlit page configuration
-st.set_page_config(
-    page_title="AI Knowledge Assistant",
-    page_icon="🤖",
-    layout="centered",
-    initial_sidebar_state="expanded"
-)
 
 # SQLite fix for Streamlit Cloud
+import platform
 if platform.system() != "Windows":
     try:
         __import__('pysqlite3')
@@ -29,175 +12,111 @@ if platform.system() != "Windows":
     except ImportError:
         pass
 
+from pathlib import Path
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.schema import HumanMessage, AIMessage
+from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db
+
+# Streamlit page configuration
+st.set_page_config(
+    page_title="RAG Chat App",
+    page_icon="📚",
+    layout="centered",
+    initial_sidebar_state="expanded"
+)
+
 # Initialize session states
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
     st.session_state.rag_sources = []
-    st.session_state.vector_db_ready = False  # Flag to indicate if vector DB is ready
+    st.session_state.vector_db = None
     st.session_state.messages = [
         {"role": "user", "content": "Hello"},
-        {"role": "assistant", "content": "Hi there! I'm your AI Knowledge Assistant. How can I help you today?"}
+        {"role": "assistant", "content": "Hi there! How can I assist you today?"}
     ]
 
-# --- Load existing vector DB and sources on startup ---
-if not st.session_state.vector_db_ready:
-    with st.spinner("Loading existing knowledge base..."):
-        st.session_state.vector_db = initialize_vector_db(persist_directory="chroma_db")
-        if st.session_state.vector_db is not None:
-            st.session_state.vector_db_ready = True
-            st.session_state.rag_sources = load_rag_sources(st.session_state.vector_db)
+# Page header
+st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
 
-# --- Header Section ---
-st.markdown("""
-    <div style="text-align: center;">
-        <h2>🤖 AI Knowledge Assistant</h2>
-        <p style="color: #666;">Powered by RAG Technology 📚✨</p>
-    </div>
-""", unsafe_allow_html=True)
-
-# --- Sidebar Configuration ---
+# Sidebar configuration
 with st.sidebar:
-    st.markdown("### ⚙️ Configuration")
-
-    # API Key Management
-    google_api_key = st.secrets.get("google_api_key") if "google_api_key" in st.secrets else st.session_state.get("google_api_key", "")
-
+    # API Key Management - Check secrets first, then environment, then input
+    google_api_key = st.secrets.get("google_api_key", "") if hasattr(st, "secrets") else ""
+    
+    # Only show API input if no key in secrets
     if not google_api_key:
-        with st.expander("🔐 API Settings"):
-            google_api_key = st.text_input(
-                "Google API Key",
-                type="password",
-                key="google_api_key",
-                help="Enter your Google API key here"
-            )
-            st.session_state.google_api_key = google_api_key  # Store in session state
+        google_api_key = st.text_input(
+            "Google API Key",
+            type="password",
+            key="google_api_key"
+        )
 
-    st.markdown("### 🎮 Controls")
-
-    # Model Selection (Consider making this configurable if needed)
-    model = "google/gemini-2.0-flash-thinking-exp-1219"
+    # Model Selection and Chat Controls
+    model = "google/gemini-pro"  # Using a stable model
     st.session_state.use_rag = st.toggle(
-        "🧠 Enable Knowledge Base",
-        value=st.session_state.vector_db_ready,
-        disabled=not st.session_state.vector_db_ready,
-        help="Toggle to enable or disable RAG capabilities"
+        "Enable RAG",
+        value=st.session_state.vector_db is not None,
+        disabled=st.session_state.vector_db is None
     )
-
-    if st.button("🧹 Clear Chat"):
+    
+    if st.button("Clear Chat", type="primary"):
         st.session_state.messages = [
             {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there! I'm your AI Knowledge Assistant. How can I help you today?"}
+            {"role": "assistant", "content": "Hi there! How can I assist you today?"}
         ]
         st.rerun()
 
-    st.markdown("### 📚 Knowledge Base")
-
-    # Document Upload
-    uploaded_files = st.file_uploader(
-        "📄 Upload Documents",
+    # RAG Document Management
+    st.header("📚 Knowledge Base")
+    st.file_uploader(
+        "Upload Documents",
         type=["pdf", "txt", "docx", "md"],
         accept_multiple_files=True,
-        key="rag_docs",
-        help="Upload PDF, TXT, DOCX, or MD files"
+        on_change=load_doc_to_db,
+        key="rag_docs"
     )
 
-    # Trigger document loading on upload
-    if uploaded_files:
-        with st.spinner("Loading documents..."):
-            load_doc_to_db(uploaded_files)
-            if not st.session_state.vector_db_ready and st.session_state.rag_sources:
-                st.session_state.vector_db_ready = True
-                st.rerun()
-
-    # URL Input
-    url_input = st.text_input(
-        "🌐 Add Website URL",
+    st.text_input(
+        "Add Website URL",
         placeholder="https://example.com",
-        key="rag_url",
-        help="Enter a website URL to add to the knowledge base"
+        on_change=load_url_to_db,
+        key="rag_url"
     )
 
-    # Trigger URL loading on input change
-    if st.session_state.rag_url != url_input and url_input:
-        with st.spinner("Loading URL..."):
-            load_url_to_db(url_input)
-            if not st.session_state.vector_db_ready and st.session_state.rag_sources:
-                st.session_state.vector_db_ready = True
-                st.rerun()
-        st.session_state.rag_url = url_input # Update session state to avoid re-triggering
+    with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
+        st.write(st.session_state.rag_sources)
 
-    # Source Display
-    with st.expander(f"📂 Knowledge Sources ({len(st.session_state.rag_sources)})"):
-        if st.session_state.rag_sources:
-            for source in st.session_state.rag_sources:
-                icon = "🌐" if source.startswith('http') else "📄"
-                st.markdown(f"{icon} `{source}`")
-        else:
-            st.markdown("_No sources added yet_")
-
-# --- Main Chat Interface ---
+# Main chat interface
 if not google_api_key:
-    st.warning("🔑 No Google API Key found. Please add it to your Streamlit secrets or enter it in the sidebar.")
-elif not st.session_state.vector_db_ready and st.session_state.rag_sources:
-    with st.spinner("Initializing Knowledge Base... This may take a moment."):
-        st.session_state.vector_db = initialize_vector_db(persist_directory="chroma_db")
-        if st.session_state.vector_db is not None:
-            st.session_state.vector_db_ready = True
-            st.session_state.use_rag = True # Enable RAG once DB is ready
-            st.rerun() # Rerun to update UI
+    st.warning("⚠️ No Google API Key found. Please add it to your Streamlit secrets or enter it in the sidebar.")
 else:
     # Initialize LLM
     llm = ChatGoogleGenerativeAI(
         model=model.split("/")[-1],
         google_api_key=google_api_key,
-        temperature=0,
-        top_p=0.95,
-        top_k=64,
-        max_output_tokens=8192,
+        temperature=0.7,
         streaming=True
     )
 
     # Display chat messages
     for message in st.session_state.messages:
-        avatar = "🤖" if message["role"] == "assistant" else "👤"
-        with st.chat_message(message["role"], avatar=avatar):
+        with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
     # Chat input and response
-    if prompt := st.chat_input("💭 Type your message here..."):
+    if prompt := st.chat_input("Your message"):
         st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user", avatar="👤"):
+        with st.chat_message("user"):
             st.markdown(prompt)
 
-        with st.chat_message("assistant", avatar="🤖"):
-            message_placeholder = st.empty()
-            full_response = ""
+        with st.chat_message("assistant"):
             messages = [
-                HumanMessage(content=m["content"]) if m["role"] == "user"
-                else AIMessage(content=m["content"])
+                HumanMessage(content=m["content"]) if m["role"] == "user" 
+                else AIMessage(content=m["content"]) 
                 for m in st.session_state.messages
             ]
-
-            if st.session_state.use_rag and st.session_state.vector_db_ready:
-                response_stream = stream_llm_rag_response(llm, messages)
-                if response_stream:
-                    for chunk in response_stream:
-                        full_response += chunk
-                        message_placeholder.markdown(full_response + "▌")
-                    message_placeholder.markdown(full_response)
+            
+            if st.session_state.use_rag:
+                st.write_stream(stream_llm_rag_response(llm, messages))
             else:
-                response_stream = stream_llm_response(llm, messages)
-                if response_stream:
-                    for chunk in response_stream:
-                        full_response += chunk
-                        message_placeholder.markdown(full_response + "▌")
-                    message_placeholder.markdown(full_response)
-
-# --- Footer ---
-st.markdown("""
-    <div style='text-align: center; padding: 10px; margin-top: 2rem; border-top: 1px solid #eee;'>
-        <p style='color: #666; font-size: 0.8rem;'>
-            📚 Powered by RAG Technology | 🤖 Using Google's Gemini Pro
-        </p>
-    </div>
-""", unsafe_allow_html=True)
+                st.write_stream(stream_llm_response(llm, messages))

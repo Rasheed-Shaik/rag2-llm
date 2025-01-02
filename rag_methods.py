@@ -1,11 +1,8 @@
-# rag_methods.py
 import streamlit as st
 import os
 import tempfile
-from typing import List, Dict, Any
+from typing import List
 from pathlib import Path
-
-# Langchain imports
 from langchain.schema import Document
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain_community.document_loaders import (
@@ -16,262 +13,172 @@ from langchain_community.document_loaders import (
 )
 from langchain_community.vectorstores import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, SystemMessagePromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_google_genai import ChatGoogleGenerativeAI
 from chromadb.config import Settings
 
 DB_DOCS_LIMIT = 10
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-CHROMA_PERSIST_DIR = "chroma_db" # Define persistent directory
 
-def initialize_llm(model: str, google_api_key: str) -> ChatGoogleGenerativeAI:
-    """Initialize the LLM."""
-    return ChatGoogleGenerativeAI(
-        model=model.split("/")[-1],
-        google_api_key=google_api_key,
-        temperature=0,
-        top_p=0.95,
-        top_k=64,
-        max_output_tokens=8192,
-        streaming=True
-    )
-
-def stream_llm_response(llm_stream: ChatGoogleGenerativeAI, messages: List[Any]):
-    """Stream LLM response without RAG."""
-    full_response = ""
+def stream_llm_response(llm_stream, messages):
+    """Stream LLM response without RAG"""
+    response_message = ""
     for chunk in llm_stream.stream(messages):
-        text_content = ""
-        if hasattr(chunk, "content"):
-            if isinstance(chunk.content, list):
-                text_content = "".join(str(item) for item in chunk.content)
-            else:
-                text_content = str(chunk.content)
-        elif isinstance(chunk, dict) and "text" in chunk:
-            text_content = chunk["text"]
-        elif isinstance(chunk, dict) and "candidates" in chunk and chunk["candidates"]:
-            best_candidate = chunk["candidates"][0]
-            if "content" in best_candidate and "parts" in best_candidate["content"]:
-                text_content = "".join(part["text"] for part in best_candidate["content"]["parts"])
+        response_message += chunk.content
+        yield chunk.content
+    st.session_state.messages.append({"role": "assistant", "content": response_message})
 
-        if text_content:
-            full_response += text_content
-            yield text_content
-
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
-
-def initialize_vector_db(persist_directory: str = CHROMA_PERSIST_DIR) -> Chroma | None:
-    """Initialize or load the vector database."""
-    embedding_function = HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL_NAME,
-        model_kwargs={"device": "cpu"},
-    )
-    chroma_settings = Settings(
-        is_persistent=True,
-        persist_directory=persist_directory,
-        anonymized_telemetry=False,
-    )
+def initialize_vector_db(docs: List[Document]) -> Chroma:
+    """Initialize vector database with provided documents"""
     try:
-        # Try loading the existing database
-        vector_db = Chroma(
-            persist_directory=persist_directory,
-            embedding_function=embedding_function,
-            client_settings=chroma_settings,
-            collection_name=f"collection_{st.session_state.session_id}",
+        embedding_function = HuggingFaceEmbeddings(
+            model_name="Alibaba-NLP/gte-base-en",  # Using base model for efficiency
+            model_kwargs={"trust_remote_code": True}
         )
-        return vector_db
-    except ValueError:
-        # If the database doesn't exist, return None
+        
+        temp_dir = tempfile.mkdtemp()
+        chroma_settings = Settings(
+            is_persistent=True,
+            persist_directory=temp_dir,
+            anonymized_telemetry=False
+        )
+        
+        return Chroma.from_documents(
+            documents=docs,
+            embedding=embedding_function,
+            collection_name=f"collection_{st.session_state.session_id}",
+            persist_directory=temp_dir,
+            client_settings=chroma_settings
+        )
+        
+    except Exception as e:
+        st.error(f"Vector DB initialization failed: {str(e)}")
         return None
 
-def load_rag_sources(vector_db: Chroma) -> List[str]:
-    """Load the list of RAG sources from the vector database."""
-    if vector_db is not None:
-        metadatas = vector_db.get(include=['metadatas'])['metadatas']
-        sources = set()
-        for metadata in metadatas:
-            if 'source' in metadata:
-                sources.add(metadata['source'])
-        return list(sources)
-    return []
-
 def process_documents(docs: List[Document]) -> None:
-    """Process and load documents into vector database."""
+    """Process and load documents into vector database"""
     if not docs:
-        st.warning("No documents to process.")
         return
-
+        
     try:
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
+            chunk_size=1000,  # Reduced chunk size for better processing
+            chunk_overlap=200
         )
+        
         chunks = text_splitter.split_documents(docs)
         if not chunks:
             st.warning("No content extracted from documents.")
             return
-
-        embedding_function = HuggingFaceEmbeddings(
-            model_name=EMBEDDING_MODEL_NAME,
-            model_kwargs={"device": "cpu"},
-        )
-        chroma_settings = Settings(
-            is_persistent=True,
-            persist_directory=CHROMA_PERSIST_DIR,
-            anonymized_telemetry=False,
-        )
-
-        if not os.path.exists(CHROMA_PERSIST_DIR) or not os.listdir(CHROMA_PERSIST_DIR):
-            # Initialize a new database if it doesn't exist
-            st.session_state.vector_db = Chroma.from_documents(
-                documents=chunks,
-                embedding=embedding_function,
-                collection_name=f"collection_{st.session_state.session_id}",
-                persist_directory=CHROMA_PERSIST_DIR,
-                client_settings=chroma_settings,
-                metadatas=[doc.metadata for doc in chunks] # Use metadata from chunks
-            )
+            
+        if st.session_state.vector_db is None:
+            vector_db = initialize_vector_db(chunks)
+            if vector_db:
+                st.session_state.vector_db = vector_db
         else:
             try:
-                # Load the existing database and add documents
-                st.session_state.vector_db = Chroma(
-                    persist_directory=CHROMA_PERSIST_DIR,
-                    embedding_function=embedding_function,
-                    client_settings=chroma_settings,
-                    collection_name=f"collection_{st.session_state.session_id}",
-                )
-                st.session_state.vector_db.add_documents(chunks) # Remove explicit metadatas
-            except Exception as e:
-                st.error(f"Error adding documents to existing vector DB: {e}")
-                # Fallback to creating a new one if loading fails
-                st.session_state.vector_db = Chroma.from_documents(
-                    documents=chunks,
-                    embedding=embedding_function,
-                    collection_name=f"collection_{st.session_state.session_id}",
-                    persist_directory=CHROMA_PERSIST_DIR,
-                    client_settings=chroma_settings,
-                    metadatas=[doc.metadata for doc in chunks] # Use metadata from chunks
-                )
-
-        st.session_state.vector_db.persist()
-
+                st.session_state.vector_db.add_documents(chunks)
+            except Exception:
+                vector_db = initialize_vector_db(chunks)
+                if vector_db:
+                    st.session_state.vector_db = vector_db
+                    
     except Exception as e:
-        st.error(f"Document processing error: {e}")
+        st.error(f"Document processing error: {str(e)}")
 
-def load_doc_to_db(uploaded_files):
-    """Load documents to vector database."""
-    for uploaded_file in uploaded_files:
-        source_name = uploaded_file.name
-        if source_name in st.session_state.rag_sources:
-            st.warning(f"Document '{source_name}' already loaded.")
-            continue  # Skip processing if already loaded
+def load_doc_to_db():
+    """Load documents to vector database"""
+    if "rag_docs" in st.session_state and st.session_state.rag_docs:
+        docs = []
+        for doc_file in st.session_state.rag_docs:
+            if doc_file.name not in st.session_state.rag_sources:
+                if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
+                    st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
+                    break
 
-        if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
-            st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
-            break
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                        tmp_file.write(doc_file.getvalue())
+                        file_path = tmp_file.name
 
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(source_name).suffix) as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
-                file_path = tmp_file.name
+                        loader = None
+                        if doc_file.type == "application/pdf":
+                            loader = PyPDFLoader(file_path)
+                        elif doc_file.name.endswith(".docx"):
+                            loader = Docx2txtLoader(file_path)
+                        elif doc_file.type in ["text/plain", "text/markdown"]:
+                            loader = TextLoader(file_path)
 
-                loaders: Dict[str, Any] = {
-                    ".pdf": PyPDFLoader,
-                    ".docx": Docx2txtLoader,
-                    ".txt": TextLoader,
-                    ".md": TextLoader,
-                }
-                file_extension = Path(source_name).suffix.lower()
-                loader_class = loaders.get(file_extension)
+                        if loader:
+                            docs.extend(loader.load())
+                            st.session_state.rag_sources.append(doc_file.name)
+                            
+                except Exception as e:
+                    st.error(f"Error loading {doc_file.name}: {str(e)}")
+                finally:
+                    if os.path.exists(file_path):
+                        os.unlink(file_path)
 
-                if loader_class:
-                    loader = loader_class(file_path)
-                    loaded_docs = loader.load()
-                    for doc in loaded_docs:
-                        doc.metadata['source'] = source_name # Add source to metadata
-                    process_documents(loaded_docs)
-                    st.session_state.rag_sources.append(source_name)
-                else:
-                    st.warning(f"Unsupported file type: {source_name}")
-
-        except Exception as e:
-            st.error(f"Error loading {source_name}: {e}")
-        finally:
-            if os.path.exists(file_path):
-                os.unlink(file_path)
-    if uploaded_files:
-        st.success("Documents loaded successfully!")
-
-def load_url_to_db(url):
-    """Load URL content to vector database."""
-    if url and url in st.session_state.rag_sources:
-        st.warning(f"URL '{url}' already loaded.")
-        return
-
-    if url and len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
-        st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
-        return
-
-    if url:
-        try:
-            loader = WebBaseLoader(url)
-            docs = loader.load()
-            for doc in docs:
-                doc.metadata['source'] = url # Add source to metadata
+        if docs:
             process_documents(docs)
-            st.session_state.rag_sources.append(url)
-            st.success("URL content loaded successfully!")
-        except Exception as e:
-            st.error(f"Error loading URL: {e}")
+            st.success(f"Documents loaded successfully!")
 
-def get_rag_chain(llm: ChatGoogleGenerativeAI):
-    """Create RAG chain for conversational retrieval."""
-    if not st.session_state.vector_db_ready or st.session_state.vector_db is None:
-        st.error("Vector database is not initialized.")
-        return None
+def load_url_to_db():
+    """Load URL content to vector database"""
+    if "rag_url" in st.session_state and st.session_state.rag_url:
+        url = st.session_state.rag_url
+        if url not in st.session_state.rag_sources:
+            if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
+                st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
+                return
 
-    retriever = st.session_state.vector_db.as_retriever(search_kwargs={"k": 3})
+            try:
+                loader = WebBaseLoader(url)
+                docs = loader.load()
+                st.session_state.rag_sources.append(url)
+                process_documents(docs)
+                st.success(f"URL content loaded successfully!")
+            except Exception as e:
+                st.error(f"Error loading URL: {str(e)}")
 
+def get_rag_chain(llm):
+    """Create RAG chain for conversational retrieval"""
+    retriever = st.session_state.vector_db.as_retriever(
+        search_kwargs={"k": 3}
+    )
+    
     context_prompt = ChatPromptTemplate.from_messages([
-        SystemMessagePromptTemplate.from_template(
-            "You are a helpful assistant, use the context to answer the user's question."
-        ),
         MessagesPlaceholder(variable_name="messages"),
         ("user", "{input}"),
-        ("user", "Generate a search query based on our conversation, focusing on recent messages."),
+        ("user", "Generate a search query based on our conversation, focusing on recent messages.")
     ])
+    
     retriever_chain = create_history_aware_retriever(llm, retriever, context_prompt)
-
+    
     response_prompt = ChatPromptTemplate.from_messages([
-        SystemMessagePromptTemplate.from_template(
-            "Answer based on the context and your knowledge. Context: {context}"
-        ),
+        ("system", "Answer based on the context and your knowledge. Context: {context}"),
         MessagesPlaceholder(variable_name="messages"),
-        ("user", "{input}"),
+        ("user", "{input}")
     ])
-    stuff_documents_chain = create_stuff_documents_chain(llm, response_prompt)
-    return create_retrieval_chain(retriever_chain, stuff_documents_chain)
+    
+    return create_retrieval_chain(
+        retriever_chain,
+        create_stuff_documents_chain(llm, response_prompt)
+    )
 
-def stream_llm_rag_response(llm: ChatGoogleGenerativeAI, messages: List[Any]):
-    """Stream RAG-enhanced LLM response."""
-    rag_chain = get_rag_chain(llm)
-    if rag_chain is None:
-        yield "Error: RAG chain not initialized."
-        return
-
-    result = rag_chain.invoke({"messages": messages[:-1], "input": messages[-1].content})
-    answer = result.get("answer", "")
-    source_documents = result.get("source_documents", [])
-
-    full_response = ""
-    for text in answer:
-        full_response += text
-        yield text
-
-    if source_documents:
-        with st.expander("Sources"):
-            for doc in source_documents:
-                st.markdown(f"> `{doc.metadata.get('source', 'unknown')}`")
-
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+def stream_llm_rag_response(llm_stream, messages):
+    """Stream RAG-enhanced LLM response"""
+    rag_chain = get_rag_chain(llm_stream)
+    response_message = "🔍 "
+    
+    for chunk in rag_chain.pick("answer").stream({
+        "messages": messages[:-1],
+        "input": messages[-1].content
+    }):
+        response_message += chunk
+        yield chunk
+        
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": response_message
+    })
