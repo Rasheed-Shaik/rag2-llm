@@ -9,8 +9,7 @@ from langchain.embeddings import HuggingFaceEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader, WebBaseLoader
 from langchain_community.vectorstores import Pinecone as LangchainPinecone
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-import pinecone  # Add this import statement
-from pinecone import ServerlessSpec
+from pinecone import Pinecone, ServerlessSpec
 import json
 import streamlit as st  # Keep this for potential caching decorators
 
@@ -32,24 +31,29 @@ if platform.system() != "Windows":
     except ImportError:
         print("rag_methods.py: Warning: pysqlite3 not imported. This might cause issues with SQLite on Streamlit Cloud.")
     pass
+
 @st.cache_resource()
 def initialize_pinecone():
-    pinecone_api_key = os.environ.get("PINECONE_API_KEY")
-    pinecone_environment = os.environ.get("PINECONE_ENVIRONMENT")
+    pinecone_api_key = st.secrets.get("PINECONE_API_KEY")
+    pinecone_environment = st.secrets.get("PINECONE_ENVIRONMENT")
     if not pinecone_api_key or not pinecone_environment:
-        print("rag_methods.py: Pinecone API key and environment not found in environment variables.")
-        return None  # Or handle this case as needed
+        print("rag_methods.py: Pinecone API key and environment not found in Streamlit secrets.")
+        return None
 
-    pinecone.init(api_key=pinecone_api_key, environment=pinecone_environment)
-    if INDEX_NAME not in pinecone.list_indexes():
-        print(f"rag_methods.py: Creating Pinecone index '{INDEX_NAME}'...")
-        pinecone.create_index(
-            INDEX_NAME,
-            dimension=768,  # Adjust based on your embedding model
-            metric='cosine',
-            spec=ServerlessSpec(cloud='aws', region='us-east-1') # Adjust region as needed
-        )
-    return pinecone.Index(INDEX_NAME)
+    try:
+        pc = Pinecone(api_key=pinecone_api_key, environment=pinecone_environment)
+        if INDEX_NAME not in pc.list_indexes().names:
+            print(f"rag_methods.py: Creating Pinecone index '{INDEX_NAME}'...")
+            pc.create_index(
+                name=INDEX_NAME,
+                dimension=768,  # Adjust based on your embedding model
+                metric='cosine',
+                spec=ServerlessSpec(cloud='aws', region='us-east-1')  # Adjust region as needed
+            )
+        return pc.Index(INDEX_NAME)
+    except Exception as e:
+        print(f"rag_methods.py: Error initializing Pinecone: {e}")
+        return None
 
 @st.cache_resource()
 def get_embedding_function():
