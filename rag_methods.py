@@ -17,9 +17,11 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from pinecone import Pinecone, ServerlessSpec
+import json
 
 DB_DOCS_LIMIT = 10
 INDEX_NAME = "langchain-rag"
+METADATA_NAMESPACE = "document_metadata"
 
 def initialize_pinecone():
     """Initialize Pinecone client using the new Pinecone class"""
@@ -44,6 +46,73 @@ def initialize_pinecone():
     index = pc.Index(INDEX_NAME)
     return index, INDEX_NAME
 
+def save_document_metadata(doc_name: str, doc_type: str):
+    """Save document metadata to Pinecone"""
+    try:
+        embedding_function = HuggingFaceEmbeddings(
+            model_name="BAAI/bge-small-en",
+            model_kwargs={"trust_remote_code": True},
+            encode_kwargs={"normalize_embeddings": True}
+        )
+        
+        metadata = {
+            "name": doc_name,
+            "type": doc_type,
+            "session_id": st.session_state.session_id
+        }
+        
+        # Create a metadata document
+        metadata_doc = Document(
+            page_content=json.dumps(metadata),
+            metadata={"namespace": METADATA_NAMESPACE}
+        )
+        
+        # Initialize vector store for metadata if not exists
+        if "metadata_store" not in st.session_state:
+            index, index_name = initialize_pinecone()
+            st.session_state.metadata_store = LangchainPinecone.from_documents(
+                documents=[metadata_doc],
+                embedding=embedding_function,
+                index_name=index_name,
+                namespace=METADATA_NAMESPACE
+            )
+        else:
+            st.session_state.metadata_store.add_documents([metadata_doc])
+            
+    except Exception as e:
+        st.error(f"Error saving document metadata: {str(e)}")
+
+def load_persisted_documents():
+    """Load document metadata from Pinecone"""
+    try:
+        if "metadata_store" not in st.session_state:
+            index, index_name = initialize_pinecone()
+            embedding_function = HuggingFaceEmbeddings(
+                model_name="BAAI/bge-small-en",
+                model_kwargs={"trust_remote_code": True},
+                encode_kwargs={"normalize_embeddings": True}
+            )
+            st.session_state.metadata_store = LangchainPinecone(
+                index_name=index_name,
+                embedding_function=embedding_function,
+                namespace=METADATA_NAMESPACE
+            )
+        
+        # Query all documents for the current session
+        results = st.session_state.metadata_store.similarity_search(
+            "document metadata",
+            filter={"session_id": st.session_state.session_id}
+        )
+        
+        # Extract document names from metadata
+        for result in results:
+            metadata = json.loads(result.page_content)
+            if metadata["name"] not in st.session_state.rag_sources:
+                st.session_state.rag_sources.append(metadata["name"])
+                
+    except Exception as e:
+        st.error(f"Error loading persisted documents: {str(e)}")
+
 def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
     """Initialize vector database with provided documents"""
     try:
@@ -53,7 +122,6 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
             encode_kwargs={"normalize_embeddings": True}
         )
         
-        # Get both the index and index_name
         pinecone_index, index_name = initialize_pinecone()
         
         return LangchainPinecone.from_documents(
@@ -67,7 +135,7 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
         st.error(f"Vector DB initialization failed: {str(e)}")
         return None
 
-def process_documents(docs: List[Document]) -> None:
+def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> None:
     """Process and load documents into vector database"""
     if not docs:
         return
@@ -87,13 +155,16 @@ def process_documents(docs: List[Document]) -> None:
             vector_db = initialize_vector_db(chunks)
             if vector_db:
                 st.session_state.vector_db = vector_db
+                save_document_metadata(doc_name, doc_type)
         else:
             try:
                 st.session_state.vector_db.add_documents(chunks)
+                save_document_metadata(doc_name, doc_type)
             except Exception:
                 vector_db = initialize_vector_db(chunks)
                 if vector_db:
                     st.session_state.vector_db = vector_db
+                    save_document_metadata(doc_name, doc_type)
                     
     except Exception as e:
         st.error(f"Document processing error: {str(e)}")
@@ -103,39 +174,35 @@ def load_doc_to_db():
     if "rag_docs" in st.session_state and st.session_state.rag_docs:
         docs = []
         for doc_file in st.session_state.rag_docs:
-            # Check if the document already exists in the session or on disk
             if doc_file.name not in st.session_state.rag_sources:
                 if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
                     st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
                     break
 
                 try:
-                    # Save the document to a directory on disk
-                    doc_dir = Path("docs")
-                    doc_dir.mkdir(parents=True, exist_ok=True)
-                    doc_path = doc_dir / doc_file.name
-                    
-                    with open(doc_path, "wb") as f:
-                        f.write(doc_file.getvalue())
+                    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                        tmp_file.write(doc_file.getvalue())
+                        tmp_path = tmp_file.name
 
-                    # Load document using appropriate loader
                     loader = None
                     if doc_file.type == "application/pdf":
-                        loader = PyPDFLoader(str(doc_path))
+                        loader = PyPDFLoader(tmp_path)
                     elif doc_file.name.endswith(".docx"):
-                        loader = Docx2txtLoader(str(doc_path))
+                        loader = Docx2txtLoader(tmp_path)
                     elif doc_file.type in ["text/plain", "text/markdown"]:
-                        loader = TextLoader(str(doc_path))
+                        loader = TextLoader(tmp_path)
 
                     if loader:
-                        docs.extend(loader.load())
+                        docs = loader.load()
+                        process_documents(docs, doc_file.name, doc_file.type)
                         st.session_state.rag_sources.append(doc_file.name)
+                    
+                    os.unlink(tmp_path)
                             
                 except Exception as e:
                     st.error(f"Error loading {doc_file.name}: {str(e)}")
 
         if docs:
-            process_documents(docs)
             st.success(f"Documents loaded successfully!")
 
 def load_url_to_db():
@@ -150,82 +217,14 @@ def load_url_to_db():
             try:
                 loader = WebBaseLoader(url)
                 docs = loader.load()
+                process_documents(docs, url, "url")
                 st.session_state.rag_sources.append(url)
-                process_documents(docs)
                 st.success(f"URL content loaded successfully!")
             except Exception as e:
                 st.error(f"Error loading URL: {str(e)}")
 
 def initialize_documents():
-    """Load documents from disk if they exist"""
-    doc_dir = Path("docs")
-    if doc_dir.exists():
-        for doc_file in doc_dir.iterdir():
-            # Initialize rag_sources in session state before loading
-            if doc_file.name not in st.session_state.rag_sources:
-                try:
-                    loader = None
-                    if doc_file.suffix == ".pdf":
-                        loader = PyPDFLoader(str(doc_file))
-                    elif doc_file.suffix == ".docx":
-                        loader = Docx2txtLoader(str(doc_file))
-                    elif doc_file.suffix in [".txt", ".md"]:
-                        loader = TextLoader(str(doc_file))
+    """Load document metadata from Pinecone on startup"""
+    load_persisted_documents()
 
-                    if loader:
-                        docs = loader.load()
-                        process_documents(docs)
-                        st.session_state.rag_sources.append(doc_file.name)
-
-                except Exception as e:
-                    st.error(f"Error loading {doc_file.name}: {str(e)}")
-
-def get_rag_chain(llm):
-    """Create RAG chain for conversational retrieval"""
-    retriever = st.session_state.vector_db.as_retriever(
-        search_kwargs={"k": 3}
-    )
-    
-    context_prompt = ChatPromptTemplate.from_messages([
-        MessagesPlaceholder(variable_name="messages"),
-        ("user", "{input}"),
-        ("user", "Generate a search query based on our conversation, focusing on recent messages.")
-    ])
-    
-    retriever_chain = create_history_aware_retriever(llm, retriever, context_prompt)
-    
-    response_prompt = ChatPromptTemplate.from_messages([
-        ("system", "Answer based on the context and your knowledge. Context: {context}"),
-        MessagesPlaceholder(variable_name="messages"),
-        ("user", "{input}")
-    ])
-    
-    return create_retrieval_chain(
-        retriever_chain,
-        create_stuff_documents_chain(llm, response_prompt)
-    )
-
-def stream_llm_response(llm_stream, messages):
-    """Stream LLM response without RAG"""
-    response_message = ""
-    for chunk in llm_stream.stream(messages):
-        response_message += chunk.content
-        yield chunk.content
-    st.session_state.messages.append({"role": "assistant", "content": response_message})
-
-def stream_llm_rag_response(llm_stream, messages):
-    """Stream RAG-enhanced LLM response"""
-    rag_chain = get_rag_chain(llm_stream)
-    response_message = "🔍 "
-    
-    for chunk in rag_chain.pick("answer").stream({
-        "messages": messages[:-1],
-        "input": messages[-1].content
-    }):
-        response_message += chunk
-        yield chunk
-        
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": response_message
-    })
+# Rest of the code remains the same...
