@@ -40,8 +40,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "documents_loaded" not in st.session_state:
     st.session_state.documents_loaded = False
-if "initial_load_complete" not in st.session_state:
-    st.session_state.initial_load_complete = False
+if "initial_load_triggered" not in st.session_state:  # New flag
+    st.session_state.initial_load_triggered = False
 
 # Initialize default messages only if messages is empty
 if not st.session_state.messages:
@@ -51,12 +51,16 @@ if not st.session_state.messages:
     except NameError as e:
         st.error(f"NameError during message initialization: {e}. Please ensure 'langchain' is installed.")
 
-# Initialize persisted documents on app start (call conditionally)
-print("app.py: Before calling initialize_documents()")
-if not st.session_state.initial_load_complete:
+# Initialize persisted documents on app start (call conditionally and with a flag)
+print("app.py: Before potentially calling initialize_documents()")
+if not st.session_state.initial_load_triggered:
+    print("app.py: Calling initialize_documents()")
     initialize_documents()
-    st.session_state.initial_load_complete = True
-print("app.py: After calling initialize_documents()")
+    st.session_state.initial_load_triggered = True
+    print("app.py: initialize_documents() completed.")
+else:
+    print("app.py: initialize_documents() already triggered.")
+print("app.py: After potentially calling initialize_documents()")
 
 # Page header
 st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
