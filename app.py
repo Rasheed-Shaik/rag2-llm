@@ -52,7 +52,7 @@ with st.sidebar:
         )
 
     # Model Selection and Chat Controls
-    model = "google/gemini-pro"  # Using a stable model
+    model = "google/gemini-1.5-flash-latest"  # Using a stable model
     st.session_state.use_rag = st.toggle(
         "Enable RAG",
         value=st.session_state.vector_db is not None,
