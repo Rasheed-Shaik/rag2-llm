@@ -1,5 +1,4 @@
 # rag_methods.py
-print("RAG_METHODS.PY WAS LOADED!")
 import streamlit as st
 import os
 import tempfile
