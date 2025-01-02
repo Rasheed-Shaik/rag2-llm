@@ -42,7 +42,7 @@ def initialize_pinecone():
             )
         )
     
-    return pinecone.Index(index_name),index_name
+    return Pinecone.Index(index_name),index_name
 
 
 def initialize_vector_db(docs: List[Document]) -> Pinecone:
