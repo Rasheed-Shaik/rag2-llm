@@ -38,8 +38,8 @@ if "messages" not in st.session_state:
         {"role": "user", "content": "Hello"},
         {"role": "assistant", "content": "Hi there! How can I assist you today?"}
     ]
-if "load_docs_on_expand" not in st.session_state:
-    st.session_state.load_docs_on_expand = False
+if "documents_loaded" not in st.session_state:
+    st.session_state.documents_loaded = False
 
 # Page header
 st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
@@ -95,10 +95,15 @@ with st.sidebar:
 
     with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
         st.write(st.session_state.rag_sources)
-        if not st.session_state.load_docs_on_expand:
+        if "documents_loaded" not in st.session_state:
+            st.write("Expander: documents_loaded not in session_state")
             if "session_id" in st.session_state:  # Ensure session_id is initialized
+                st.write("Expander: session_id found, calling initialize_documents")
                 initialize_documents()
-                st.session_state.load_docs_on_expand = True
+                st.session_state.documents_loaded = True
+                st.write("Expander: documents_loaded set to True")
+        else:
+            st.write("Expander: documents_loaded is in session_state")
 
 # Main chat interface
 if not google_api_key:
