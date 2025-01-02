@@ -39,8 +39,6 @@ if "session_id" not in st.session_state:
 elif "rag_sources" not in st.session_state:
     st.session_state.rag_sources = []
     # initialize_documents() # Load persisted documents on startup - consider lazy loading
-elif "rag_sources" not in st.session_state:
-    st.session_state.rag_sources = []
 
 # Page header
 st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
@@ -94,10 +92,17 @@ with st.sidebar:
     if url_input:
         load_url_to_db(url_input)
 
-    # Ensure rag_sources is initialized before using it
-    if "rag_sources" in st.session_state:
-        with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})", on_change=lambda: initialize_documents()): # Trigger on expand
-            st.write(st.session_state.rag_sources)
+    # Use the expander's state to trigger initialize_documents
+    if "knowledge_base_expanded" not in st.session_state:
+        st.session_state.knowledge_base_expanded = False
+
+    with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})", key="knowledge_base_expander"):
+        st.write(st.session_state.rag_sources)
+        st.session_state.knowledge_base_expanded = True  # Set state when expanded
+
+    if st.session_state.knowledge_base_expanded:
+        initialize_documents()
+        st.session_state.knowledge_base_expanded = False # Reset to avoid repeated calls
 
 # Main chat interface
 if not google_api_key:
