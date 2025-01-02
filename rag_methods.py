@@ -38,8 +38,8 @@ def initialize_pinecone():
             dimension=384,  # Update dimension to match your embedding model
             metric='cosine',
             spec=ServerlessSpec(
-                cloud="aws",
-                region='us-west-2'
+                cloud='gcp',
+                region='us-west-1'
             )
         )
     
