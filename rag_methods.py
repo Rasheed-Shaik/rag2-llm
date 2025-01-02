@@ -94,6 +94,7 @@ def load_persisted_documents():
             st.session_state.metadata_store = LangchainPinecone(
                 embedding=embedding_function,
                 index=INDEX_NAME,
+                text_key="text",  # Specify the text field
                 namespace=METADATA_NAMESPACE
             )
         
@@ -122,6 +123,7 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
             documents=docs,
             embedding=embedding_function,
             index=INDEX_NAME,
+            text_key="text",  # Specify the text field
             namespace=f"ns_{st.session_state.session_id}"
         )
         
