@@ -42,7 +42,7 @@ def initialize_pinecone():
             )
         )
     
-    return pc.Index(INDEX_NAME)
+    return pc
 
 def get_embedding_function():
     """Get the embedding function"""
@@ -52,11 +52,21 @@ def get_embedding_function():
         encode_kwargs={"normalize_embeddings": True}
     )
 
+def create_pinecone_instance(namespace: str):
+    """Create a LangchainPinecone instance with consistent parameters"""
+    embedding_function = get_embedding_function()
+    _ = initialize_pinecone()  # Ensure index exists
+    
+    return LangchainPinecone(
+        embedding=embedding_function,
+        index=INDEX_NAME,
+        text_key="text",  # Consistent text_key across all instances
+        namespace=namespace
+    )
+
 def save_document_metadata(doc_name: str, doc_type: str):
     """Save document metadata to Pinecone"""
     try:
-        embedding_function = get_embedding_function()
-        
         metadata = {
             "name": doc_name,
             "type": doc_type,
@@ -71,13 +81,8 @@ def save_document_metadata(doc_name: str, doc_type: str):
         
         # Initialize vector store for metadata if not exists
         if "metadata_store" not in st.session_state:
-            pc = initialize_pinecone()
-            st.session_state.metadata_store = LangchainPinecone.from_documents(
-                documents=[metadata_doc],
-                embedding=embedding_function,
-                index=INDEX_NAME,
-                namespace=METADATA_NAMESPACE
-            )
+            st.session_state.metadata_store = create_pinecone_instance(METADATA_NAMESPACE)
+            st.session_state.metadata_store.add_documents([metadata_doc])
         else:
             st.session_state.metadata_store.add_documents([metadata_doc])
             
@@ -88,15 +93,7 @@ def load_persisted_documents():
     """Load document metadata from Pinecone"""
     try:
         if "metadata_store" not in st.session_state:
-            embedding_function = get_embedding_function()
-            pc = initialize_pinecone()
-            
-            st.session_state.metadata_store = LangchainPinecone(
-                embedding=embedding_function,
-                index=INDEX_NAME,
-                text_key="text",  # Specify the text field
-                namespace=METADATA_NAMESPACE
-            )
+            st.session_state.metadata_store = create_pinecone_instance(METADATA_NAMESPACE)
         
         # Query all documents for the current session
         results = st.session_state.metadata_store.similarity_search(
@@ -116,20 +113,19 @@ def load_persisted_documents():
 def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
     """Initialize vector database with provided documents"""
     try:
-        embedding_function = get_embedding_function()
-        pc = initialize_pinecone()
-        
         return LangchainPinecone.from_documents(
             documents=docs,
-            embedding=embedding_function,
+            embedding=get_embedding_function(),
             index=INDEX_NAME,
-            text_key="text",  # Specify the text field
+            text_key="text",
             namespace=f"ns_{st.session_state.session_id}"
         )
         
     except Exception as e:
         st.error(f"Vector DB initialization failed: {str(e)}")
         return None
+
+# Rest of the code remains the same...
 
 def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> None:
     """Process and load documents into vector database"""
