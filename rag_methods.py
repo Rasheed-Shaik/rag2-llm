@@ -42,7 +42,7 @@ def initialize_pinecone():
             )
         )
     
-    # Return the index instance instead of the client
+    # Return the index instance
     return pc.Index(INDEX_NAME)
 
 def get_embedding_function():
@@ -60,11 +60,11 @@ def create_pinecone_instance(namespace: str):
     
     return LangchainPinecone(
         embedding=embedding_function,
-        index_name=INDEX_NAME,  # Use index_name instead of index
-        pinecone_index=index,  # Pass the index instance
+        index=index,  # Pass the index instance directly
         text_key="text",
         namespace=namespace
     )
+
 
 def save_document_metadata(doc_name: str, doc_type: str):
     """Save document metadata to Pinecone"""
@@ -119,8 +119,7 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
         return LangchainPinecone.from_documents(
             documents=docs,
             embedding=get_embedding_function(),
-            index_name=INDEX_NAME,  # Use index_name instead of index
-            pinecone_index=index,  # Pass the index instance
+            index=index,  # Pass the index instance directly
             text_key="text",
             namespace=f"ns_{st.session_state.session_id}"
         )
