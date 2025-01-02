@@ -156,30 +156,37 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
         embedding_function = get_embedding_function()
         index = initialize_pinecone()  # Get the Pinecone Index object
 
-        st.write(f"initialize_vector_db: Value of index after initialize_pinecone: {index}") # ADDED
+        st.write(f"initialize_vector_db: Value of index after initialize_pinecone: {index}")
 
         if index is None:
             st.error("Failed to initialize Pinecone index.")
             st.write("initialize_vector_db: END - Pinecone initialization failed")
             return None
 
-        st.write("initialize_vector_db: Index is not None, proceeding with LangchainPinecone") # ADDED
+        st.write("initialize_vector_db: Index is not None, proceeding with LangchainPinecone")
 
-        vector_db = LangchainPinecone.from_documents(
-            documents=docs,
+        st.write(f"initialize_vector_db: Type of index: {type(index)}") # ADDED
+
+        # Explicitly pass the index
+        vectorstore = LangchainPinecone(
+            index=index,  # Explicitly pass the index here
             embedding=embedding_function,
-            index=index,  # Use the index object
             namespace=f"ns_{st.session_state.session_id}",
-            text_key="page_content"
+            text_key="page_content",
+            # documents=docs  <- Move documents to the add_documents call
         )
+
+        st.write("initialize_vector_db: LangchainPinecone object created") # ADDED
+
+        vectorstore.add_documents(documents=docs) # Add documents separately
+
         st.write("initialize_vector_db: END - Vector DB initialized")
-        return vector_db
+        return vectorstore
     except Exception as e:
         st.error(f"Vector DB initialization failed: {str(e)}")
         st.write("initialize_vector_db: END - Error")
         return None
 
-# rag_methods.py
 def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> None:
     """Process and load documents into vector database"""
     st.write(f"process_documents: START - doc_name: {doc_name}, doc_type: {doc_type}, num_docs: {len(docs)}")
