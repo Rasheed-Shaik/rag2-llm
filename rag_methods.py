@@ -144,6 +144,7 @@ def initialize_documents():
     print("Exiting initialize_documents()") # Log exit
 
 def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
+    print("Entering initialize_vector_db with docs:", docs) # Added log
     try:
         embedding_function = get_embedding_function()
         index = initialize_pinecone()
@@ -161,13 +162,15 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
             text_key="page_content",
         )
         vector_db.add_documents(documents=docs)
+        print("Vector DB initialized successfully.") # Added log
         return vector_db
     except Exception as e:
         st.error(f"Vector DB initialization failed: {str(e)}")
+        print(f"Error details in initialize_vector_db: {str(e)}") # Added log
         return None
 
-# rag_methods.py
 def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> None:
+    print("Entering process_documents with doc_name:", doc_name) # Added log
     if not docs:
         return
 
@@ -183,12 +186,16 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
             return
 
         if st.session_state.vector_db is None:
+            print("vector_db is None, initializing...") # Added log
             vector_db = initialize_vector_db(chunks)
             if vector_db:
+                st.session_state.vector_db = vector_db  # Ensure this assignment happens
+                print("vector_db initialized and assigned to session_state.") # Added log
                 save_document_metadata(doc_name, doc_type)
             else:
                 st.error("Failed to initialize new vector DB.")
         else:
+            print("vector_db exists, adding documents...") # Added log
             try:
                 st.session_state.vector_db.add_documents(chunks)
                 save_document_metadata(doc_name, doc_type)
@@ -196,12 +203,14 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
                 st.error(f"Error adding documents to existing DB: {str(e)}")
                 vector_db = initialize_vector_db(chunks)
                 if vector_db:
+                    st.session_state.vector_db = vector_db
                     save_document_metadata(doc_name, doc_type)
                 else:
                     st.error("Failed to re-initialize vector DB.")
 
     except Exception as e:
         st.error(f"Document processing error: {str(e)}")
+        print(f"Error details in process_documents: {str(e)}") # Added log
 
 def load_doc_to_db(uploaded_files):
     if uploaded_files:
