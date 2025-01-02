@@ -61,11 +61,18 @@ with st.sidebar:
     model = "google/gemini-1.5-flash-latest"  # Using a stable model
     if "use_rag" not in st.session_state:
         st.session_state.use_rag = False  # Default to False
+
+    st.write(f"Sidebar: Before RAG Toggle - st.session_state.vector_db is {st.session_state.vector_db}")
+    st.write(f"Sidebar: Before RAG Toggle - st.session_state.use_rag is {st.session_state.use_rag}")
+
     st.session_state.use_rag = st.toggle(
         "Enable RAG",
         value=st.session_state.vector_db is not None,
         disabled=st.session_state.vector_db is None
     )
+
+    st.write(f"Sidebar: After RAG Toggle - st.session_state.vector_db is {st.session_state.vector_db}")
+    st.write(f"Sidebar: After RAG Toggle - st.session_state.use_rag is {st.session_state.use_rag}")
 
     if st.button("Clear Chat", type="primary"):
         st.session_state.messages = [
@@ -83,7 +90,9 @@ with st.sidebar:
         key="rag_docs"
     )
     if uploaded_files:
+        st.write("app.py: Uploaded files detected, calling load_doc_to_db")
         load_doc_to_db(uploaded_files)
+        st.write(f"app.py: After load_doc_to_db - st.session_state.vector_db is {st.session_state.vector_db}")
 
     url_input = st.text_input(
         "Add Website URL",
@@ -91,7 +100,9 @@ with st.sidebar:
         key="rag_url"
     )
     if url_input:
+        st.write("app.py: URL input detected, calling load_url_to_db")
         load_url_to_db(url_input)
+        st.write(f"app.py: After load_url_to_db - st.session_state.vector_db is {st.session_state.vector_db}")
 
     with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
         st.write(st.session_state.rag_sources)
@@ -129,13 +140,11 @@ else:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            messages = [
-                HumanMessage(content=m["content"]) if m["role"] == "user"
-                else AIMessage(content=m["content"])
-                for m in st.session_state.messages
-            ]
-
+            st.write(f"Chat Loop: st.session_state.use_rag is {st.session_state.use_rag}")
+            st.write(f"Chat Loop: st.session_state.vector_db is {st.session_state.vector_db}")
             if st.session_state.use_rag and st.session_state.vector_db is not None:
+                st.write("Chat Loop: Executing RAG Response")
                 st.write_stream(stream_llm_rag_response(llm, messages))
             else:
+                st.write("Chat Loop: Executing Non-RAG Response")
                 st.write_stream(stream_llm_response(llm, messages))

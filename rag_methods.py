@@ -201,6 +201,9 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
             if vector_db:
                 st.session_state.vector_db = vector_db
                 save_document_metadata(doc_name, doc_type)
+                st.write("process_documents: New vector DB initialized and set in session state.")
+            else:
+                st.write("process_documents: Failed to initialize new vector DB.")
         else:
             st.write("process_documents: Adding to existing vector DB")
             try:
@@ -210,6 +213,7 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
                 vectorstore = LangchainPinecone(index, embedding_function, namespace, text_key="page_content")
                 vectorstore.add_documents(chunks)
                 save_document_metadata(doc_name, doc_type)
+                st.write("process_documents: Added documents to existing vector DB.")
             except Exception as e:
                 st.error(f"Error adding documents to existing DB: {str(e)}")
                 st.write(f"process_documents: Error adding to existing DB: {str(e)}, attempting re-initialization")
@@ -218,6 +222,9 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
                 if vector_db:
                     st.session_state.vector_db = vector_db
                     save_document_metadata(doc_name, doc_type)
+                    st.write("process_documents: Re-initialized vector DB after error.")
+                else:
+                    st.write("process_documents: Failed to re-initialize vector DB.")
 
         st.write("process_documents: END - Documents processed")
 
@@ -263,8 +270,7 @@ def load_doc_to_db(uploaded_files):
 
         if uploaded_files:
             st.success(f"Documents loaded successfully!")
-            # st.rerun()  <- Removed
-            st.write("load_doc_to_db: END - Documents loaded, rerun not called")
+            st.write("load_doc_to_db: END - Documents loaded")
     else:
         st.write("load_doc_to_db: END - No files uploaded")
 
@@ -283,8 +289,7 @@ def load_url_to_db(url):
             process_documents(docs, url, "url")
             st.session_state.rag_sources.append(url)
             st.success(f"URL content loaded successfully!")
-            # st.rerun()  <- Removed
-            st.write("load_url_to_db: END - URL loaded, rerun not called")
+            st.write("load_url_to_db: END - URL loaded")
         except Exception as e:
             st.error(f"Error loading URL: {str(e)}")
             st.write(f"load_url_to_db: END - Error loading URL: {str(e)}")
