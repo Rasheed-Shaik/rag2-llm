@@ -1,3 +1,4 @@
+# rag_methods.py
 import streamlit as st
 import os
 import tempfile
@@ -28,21 +29,7 @@ def initialize_pinecone():
     pc = Pinecone(
         api_key=st.secrets.get("PINECONE_API_KEY")
     )
-    
-    # Create index if it doesn't exist
-    existing_indexes = pc.list_indexes().names()
-    if INDEX_NAME not in existing_indexes:
-        pc.create_index(
-            name=INDEX_NAME,
-            dimension=384,  # dimension for BAAI text embeddings
-            metric='cosine',
-            spec=ServerlessSpec(
-                cloud='aws',
-                region='us-east-1'
-            )
-        )
-    
-    return pc.Index(INDEX_NAME)
+    return pc
 
 def get_embedding_function():
     """Get the embedding function"""
@@ -56,75 +43,98 @@ def save_document_metadata(doc_name: str, doc_type: str):
     """Save document metadata to Pinecone"""
     try:
         embedding_function = get_embedding_function()
-        
+        pc = initialize_pinecone()
+        index = pc.Index(INDEX_NAME)
+
         metadata = {
             "name": doc_name,
             "type": doc_type,
             "session_id": st.session_state.session_id
         }
-        
-        # Create a metadata document
+
         metadata_doc = Document(
             page_content=json.dumps(metadata),
-            metadata={"namespace": METADATA_NAMESPACE}
+            metadata={"source": doc_name} # Add source for filtering
         )
-        
-        # Initialize vector store for metadata if not exists
-        if "metadata_store" not in st.session_state:
-            pc = initialize_pinecone()
-            st.session_state.metadata_store = LangchainPinecone.from_documents(
-                documents=[metadata_doc],
-                embedding=embedding_function,
-                index=INDEX_NAME,
-                namespace=METADATA_NAMESPACE
-            )
-        else:
-            st.session_state.metadata_store.add_documents([metadata_doc])
-            
+
+        vectorstore = LangchainPinecone(index, embedding_function, METADATA_NAMESPACE)
+        vectorstore.add_documents([metadata_doc])
+
     except Exception as e:
         st.error(f"Error saving document metadata: {str(e)}")
 
 def load_persisted_documents():
-    """Load document metadata from Pinecone"""
+    """Load document metadata from Pinecone and initialize vector DB if needed"""
     try:
-        if "metadata_store" not in st.session_state:
-            embedding_function = get_embedding_function()
-            pc = initialize_pinecone()
-            
-            st.session_state.metadata_store = LangchainPinecone(
-                embedding=embedding_function,
-                index=INDEX_NAME,
-                namespace=METADATA_NAMESPACE
-            )
-        
-        # Query all documents for the current session
-        results = st.session_state.metadata_store.similarity_search(
-            "document metadata",
+        embedding_function = get_embedding_function()
+        pc = initialize_pinecone()
+        index = pc.Index(INDEX_NAME)
+
+        vectorstore = LangchainPinecone(index, embedding_function, METADATA_NAMESPACE)
+
+        # Fetch metadata for the current session
+        results = vectorstore.similarity_search(
+            query="document metadata",  # Dummy query
+            k=100, # Fetch a reasonable number of results
             filter={"session_id": st.session_state.session_id}
         )
-        
-        # Extract document names from metadata
+
+        loaded_sources = []
         for result in results:
-            metadata = json.loads(result.page_content)
-            if metadata["name"] not in st.session_state.rag_sources:
-                st.session_state.rag_sources.append(metadata["name"])
-                
+            try:
+                metadata = json.loads(result.page_content)
+                source_name = metadata.get("name")
+                if source_name and source_name not in st.session_state.rag_sources:
+                    st.session_state.rag_sources.append(source_name)
+                    loaded_sources.append(source_name)
+            except json.JSONDecodeError:
+                st.error(f"Error decoding metadata: {result.page_content}")
+
+        # Initialize vector DB if sources are found
+        if loaded_sources and st.session_state.vector_db is None:
+            initialize_vector_db_from_metadata(loaded_sources)
+
     except Exception as e:
         st.error(f"Error loading persisted documents: {str(e)}")
+
+def initialize_vector_db_from_metadata(source_names: List[str]):
+    """Initialize vector database from persisted document chunks."""
+    try:
+        embedding_function = get_embedding_function()
+        pc = initialize_pinecone()
+        index = pc.Index(INDEX_NAME)
+        namespace = f"ns_{st.session_state.session_id}"
+
+        # Check if the namespace already exists (implicitly by checking for vectors)
+        vectorstore = LangchainPinecone(index, embedding_function, namespace)
+        results = vectorstore.similarity_search("test", k=1) # Any query to check for existing vectors
+
+        if results:
+            st.session_state.vector_db = vectorstore
+            print(f"Vector DB re-initialized from existing namespace: {namespace}")
+        else:
+            print(f"No existing vectors found in namespace: {namespace}")
+            st.session_state.vector_db = None # Ensure it's None if no data
+
+    except Exception as e:
+        st.error(f"Error initializing vector DB from metadata: {str(e)}")
 
 def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
     """Initialize vector database with provided documents"""
     try:
         embedding_function = get_embedding_function()
         pc = initialize_pinecone()
-        
-        return LangchainPinecone.from_documents(
+        index = pc.Index(INDEX_NAME)
+        namespace = f"ns_{st.session_state.session_id}"
+
+        vectorstore = LangchainPinecone.from_documents(
             documents=docs,
             embedding=embedding_function,
-            index=INDEX_NAME,
-            namespace=f"ns_{st.session_state.session_id}"
+            index=index,
+            namespace=namespace
         )
-        
+        return vectorstore
+
     except Exception as e:
         st.error(f"Vector DB initialization failed: {str(e)}")
         return None
@@ -133,18 +143,18 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
     """Process and load documents into vector database"""
     if not docs:
         return
-        
+
     try:
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200
         )
-        
+
         chunks = text_splitter.split_documents(docs)
         if not chunks:
             st.warning("No content extracted from documents.")
             return
-            
+
         if st.session_state.vector_db is None:
             vector_db = initialize_vector_db(chunks)
             if vector_db:
@@ -152,22 +162,28 @@ def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> Non
                 save_document_metadata(doc_name, doc_type)
         else:
             try:
-                st.session_state.vector_db.add_documents(chunks)
+                embedding_function = get_embedding_function()
+                pc = initialize_pinecone()
+                index = pc.Index(INDEX_NAME)
+                namespace = f"ns_{st.session_state.session_id}"
+                vectorstore = LangchainPinecone(index, embedding_function, namespace)
+                vectorstore.add_documents(chunks)
                 save_document_metadata(doc_name, doc_type)
-            except Exception:
+            except Exception as e:
+                st.error(f"Error adding documents to existing DB: {str(e)}")
+                # Fallback to re-initializing if adding fails
                 vector_db = initialize_vector_db(chunks)
                 if vector_db:
                     st.session_state.vector_db = vector_db
                     save_document_metadata(doc_name, doc_type)
-                    
+
     except Exception as e:
         st.error(f"Document processing error: {str(e)}")
 
-def load_doc_to_db():
+def load_doc_to_db(uploaded_files):
     """Load documents to vector database"""
-    if "rag_docs" in st.session_state and st.session_state.rag_docs:
-        docs = []
-        for doc_file in st.session_state.rag_docs:
+    if uploaded_files:
+        for doc_file in uploaded_files:
             if doc_file.name not in st.session_state.rag_sources:
                 if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
                     st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
@@ -190,32 +206,32 @@ def load_doc_to_db():
                         docs = loader.load()
                         process_documents(docs, doc_file.name, doc_file.type)
                         st.session_state.rag_sources.append(doc_file.name)
-                    
+
                     os.unlink(tmp_path)
-                            
+
                 except Exception as e:
                     st.error(f"Error loading {doc_file.name}: {str(e)}")
 
-        if docs:
+        if uploaded_files:
             st.success(f"Documents loaded successfully!")
+            st.rerun() # Rerun to update the displayed sources
 
-def load_url_to_db():
+def load_url_to_db(url):
     """Load URL content to vector database"""
-    if "rag_url" in st.session_state and st.session_state.rag_url:
-        url = st.session_state.rag_url
-        if url not in st.session_state.rag_sources:
-            if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
-                st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
-                return
+    if url and url not in st.session_state.rag_sources:
+        if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
+            st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
+            return
 
-            try:
-                loader = WebBaseLoader(url)
-                docs = loader.load()
-                process_documents(docs, url, "url")
-                st.session_state.rag_sources.append(url)
-                st.success(f"URL content loaded successfully!")
-            except Exception as e:
-                st.error(f"Error loading URL: {str(e)}")
+        try:
+            loader = WebBaseLoader(url)
+            docs = loader.load()
+            process_documents(docs, url, "url")
+            st.session_state.rag_sources.append(url)
+            st.success(f"URL content loaded successfully!")
+            st.rerun() # Rerun to update the displayed sources
+        except Exception as e:
+            st.error(f"Error loading URL: {str(e)}")
 
 def initialize_documents():
     """Load document metadata from Pinecone on startup"""
@@ -226,21 +242,21 @@ def get_rag_chain(llm):
     retriever = st.session_state.vector_db.as_retriever(
         search_kwargs={"k": 3}
     )
-    
+
     context_prompt = ChatPromptTemplate.from_messages([
         MessagesPlaceholder(variable_name="messages"),
         ("user", "{input}"),
         ("user", "Generate a search query based on our conversation, focusing on recent messages.")
     ])
-    
+
     retriever_chain = create_history_aware_retriever(llm, retriever, context_prompt)
-    
+
     response_prompt = ChatPromptTemplate.from_messages([
         ("system", "Answer based on the context and your knowledge. Context: {context}"),
         MessagesPlaceholder(variable_name="messages"),
         ("user", "{input}")
     ])
-    
+
     return create_retrieval_chain(
         retriever_chain,
         create_stuff_documents_chain(llm, response_prompt)
@@ -257,15 +273,15 @@ def stream_llm_response(llm_stream, messages):
 def stream_llm_rag_response(llm_stream, messages):
     """Stream RAG-enhanced LLM response"""
     rag_chain = get_rag_chain(llm_stream)
-    response_message = "🔍 "
-    
+    response_message = ""
+
     for chunk in rag_chain.pick("answer").stream({
         "messages": messages[:-1],
         "input": messages[-1].content
     }):
         response_message += chunk
         yield chunk
-        
+
     st.session_state.messages.append({
         "role": "assistant",
         "content": response_message

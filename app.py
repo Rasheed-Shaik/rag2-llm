@@ -1,3 +1,4 @@
+# app.py
 import streamlit as st
 import os
 import uuid
@@ -35,10 +36,9 @@ if "session_id" not in st.session_state:
         {"role": "assistant", "content": "Hi there! How can I assist you today?"}
     ]
     initialize_documents()  # Load persisted documents on startup
-
-# Rest of the code remains the same...
-
-
+elif "rag_sources" not in st.session_state:
+    st.session_state.rag_sources = []
+    initialize_documents()
 
 # Page header
 st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
@@ -47,7 +47,7 @@ st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant �
 with st.sidebar:
     # API Key Management - Check secrets first, then environment, then input
     google_api_key = st.secrets.get("google_api_key", "") if hasattr(st, "secrets") else ""
-    
+
     # Only show API input if no key in secrets
     if not google_api_key:
         google_api_key = st.text_input(
@@ -59,15 +59,13 @@ with st.sidebar:
     # Model Selection and Chat Controls
     model = "google/gemini-1.5-flash-latest"  # Using a stable model
     if "use_rag" not in st.session_state:
-      st.session_state.use_rag = st.session_state.vector_db is not None
-      st.session_state.use_rag = st.toggle(
-       "Enable RAG",
-        value=st.session_state.vector_db is not None,  # Ensure this is based on the current state
+        st.session_state.use_rag = False  # Default to False
+    st.session_state.use_rag = st.toggle(
+        "Enable RAG",
+        value=st.session_state.vector_db is not None,
         disabled=st.session_state.vector_db is None
-)
+    )
 
-
-    
     if st.button("Clear Chat", type="primary"):
         st.session_state.messages = [
             {"role": "user", "content": "Hello"},
@@ -77,20 +75,22 @@ with st.sidebar:
 
     # RAG Document Management
     st.header("📚 Knowledge Base")
-    st.file_uploader(
+    uploaded_files = st.file_uploader(
         "Upload Documents",
         type=["pdf", "txt", "docx", "md"],
         accept_multiple_files=True,
-        on_change=load_doc_to_db,
         key="rag_docs"
     )
+    if uploaded_files:
+        load_doc_to_db(uploaded_files)
 
-    st.text_input(
+    url_input = st.text_input(
         "Add Website URL",
         placeholder="https://example.com",
-        on_change=load_url_to_db,
         key="rag_url"
     )
+    if url_input:
+        load_url_to_db(url_input)
 
     with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
         st.write(st.session_state.rag_sources)
@@ -120,12 +120,12 @@ else:
 
         with st.chat_message("assistant"):
             messages = [
-                HumanMessage(content=m["content"]) if m["role"] == "user" 
-                else AIMessage(content=m["content"]) 
+                HumanMessage(content=m["content"]) if m["role"] == "user"
+                else AIMessage(content=m["content"])
                 for m in st.session_state.messages
             ]
-            
-            if st.session_state.use_rag:
+
+            if st.session_state.use_rag and st.session_state.vector_db is not None:
                 st.write_stream(stream_llm_rag_response(llm, messages))
             else:
                 st.write_stream(stream_llm_response(llm, messages))
