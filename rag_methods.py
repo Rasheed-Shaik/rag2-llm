@@ -24,25 +24,31 @@ DB_DOCS_LIMIT = 10
 INDEX_NAME = "langchain-rag"
 METADATA_NAMESPACE = "document_metadata"
 
-# rag_methods.py
+
 def initialize_pinecone():
     """Initialize Pinecone client using the new Pinecone class"""
-    pc = Pinecone(
-        api_key=st.secrets.get("PINECONE_API_KEY")
-    )
-    # Create index if it doesn't exist (important for the first time)
-    existing_indexes = pc.list_indexes().names()
-    if INDEX_NAME not in existing_indexes:
-        pc.create_index(
-            name=INDEX_NAME,
-            dimension=384,  # dimension for BAAI text embeddings
-            metric='cosine',
-            spec=ServerlessSpec(
-                cloud='aws',
-                region='us-east-1'
-            )
+    try:
+        pc = Pinecone(
+            api_key=st.secrets.get("PINECONE_API_KEY")
         )
-    return pc.Index(INDEX_NAME)
+        # Create index if it doesn't exist (important for the first time)
+        existing_indexes = pc.list_indexes().names()
+        if INDEX_NAME not in existing_indexes:
+            st.info(f"Creating Pinecone index '{INDEX_NAME}'...")
+            pc.create_index(
+                name=INDEX_NAME,
+                dimension=384,  # dimension for BAAI text embeddings
+                metric='cosine',
+                spec=ServerlessSpec(
+                    cloud='aws',
+                    region='us-east-1'
+                )
+            )
+            st.success(f"Pinecone index '{INDEX_NAME}' created successfully.")
+        return pc.Index(INDEX_NAME)
+    except Exception as e:
+        st.error(f"Error initializing Pinecone client or creating index: {e}")
+        return None  # Return None if initialization or creation fails
 
 def get_embedding_function():
     """Get the embedding function"""
