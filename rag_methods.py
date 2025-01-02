@@ -24,29 +24,34 @@ DB_DOCS_LIMIT = 10
 INDEX_NAME = "langchain-rag"
 METADATA_NAMESPACE = "document_metadata"
 
+@st.cache_resource()
+def get_pinecone_index():
+    pinecone_client = Pinecone(
+        api_key=st.secrets.get("PINECONE_API_KEY")
+    )
+    # Create index if it doesn't exist (important for the first time)
+    existing_indexes = pinecone_client.list_indexes().names()
+    if INDEX_NAME not in existing_indexes:
+        st.info(f"Creating Pinecone index '{INDEX_NAME}'...")
+        pinecone_client.create_index(
+            name=INDEX_NAME,
+            dimension=384,  # dimension for BAAI text embeddings
+            metric='cosine',
+            spec=ServerlessSpec(
+                cloud='aws',
+                region='us-east-1'
+            )
+        )
+        st.success(f"Pinecone index '{INDEX_NAME}' created successfully.")
+    return pinecone_client.Index(INDEX_NAME)
+
 def initialize_pinecone():
     """Initialize Pinecone client using the new Pinecone class"""
     st.write("initialize_pinecone: START")
     try:
-        pc = Pinecone(
-            api_key=st.secrets.get("PINECONE_API_KEY")
-        )
-        # Create index if it doesn't exist (important for the first time)
-        existing_indexes = pc.list_indexes().names()
-        if INDEX_NAME not in existing_indexes:
-            st.info(f"Creating Pinecone index '{INDEX_NAME}'...")
-            pc.create_index(
-                name=INDEX_NAME,
-                dimension=384,  # dimension for BAAI text embeddings
-                metric='cosine',
-                spec=ServerlessSpec(
-                    cloud='aws',
-                    region='us-east-1'
-                )
-            )
-            st.success(f"Pinecone index '{INDEX_NAME}' created successfully.")
+        index = get_pinecone_index()
         st.write("initialize_pinecone: END - Index exists or was created")
-        return pc.Index(INDEX_NAME)
+        return index
     except Exception as e:
         st.error(f"Error initializing Pinecone client or creating index: {e}")
         st.write("initialize_pinecone: END - Error")
@@ -85,6 +90,7 @@ def save_document_metadata(doc_name: str, doc_type: str):
     except Exception as e:
         st.error(f"Error saving document metadata: {str(e)}")
         st.write("save_document_metadata: END - Error")
+
 def get_metadata_store():
     """Get or initialize the metadata store."""
     if "metadata_store" not in st.session_state:
@@ -163,29 +169,26 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
             return None
 
         st.write("initialize_vector_db: Index is not None, proceeding with LangchainPinecone")
+        st.write(f"initialize_vector_db: Type of index: {type(index)}")
 
-        st.write(f"initialize_vector_db: Type of index: {type(index)}") # ADDED
-
-        # Explicitly pass the index
-        vectorstore = LangchainPinecone(
+        vector_db = LangchainPinecone(
             index=index,  # Explicitly pass the index here
             embedding=embedding_function,
             namespace=f"ns_{st.session_state.session_id}",
             text_key="page_content",
-            # documents=docs  <- Move documents to the add_documents call
         )
 
-        st.write("initialize_vector_db: LangchainPinecone object created") # ADDED
-
-        vectorstore.add_documents(documents=docs) # Add documents separately
+        st.write("initialize_vector_db: LangchainPinecone object created")
+        vector_db.add_documents(documents=docs) # Add documents separately
 
         st.write("initialize_vector_db: END - Vector DB initialized")
-        return vectorstore
+        return vector_db
     except Exception as e:
         st.error(f"Vector DB initialization failed: {str(e)}")
         st.write("initialize_vector_db: END - Error")
         return None
 
+# rag_methods.py
 def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> None:
     """Process and load documents into vector database"""
     st.write(f"process_documents: START - doc_name: {doc_name}, doc_type: {doc_type}, num_docs: {len(docs)}")
