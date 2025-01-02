@@ -132,3 +132,148 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
         return None
 
 # Rest of the code remains the same...
+
+
+
+
+def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> None:
+    """Process and load documents into vector database"""
+    if not docs:
+        return
+        
+    try:
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200
+        )
+        
+        chunks = text_splitter.split_documents(docs)
+        if not chunks:
+            st.warning("No content extracted from documents.")
+            return
+            
+        if st.session_state.vector_db is None:
+            vector_db = initialize_vector_db(chunks)
+            if vector_db:
+                st.session_state.vector_db = vector_db
+                save_document_metadata(doc_name, doc_type)
+        else:
+            try:
+                st.session_state.vector_db.add_documents(chunks)
+                save_document_metadata(doc_name, doc_type)
+            except Exception:
+                vector_db = initialize_vector_db(chunks)
+                if vector_db:
+                    st.session_state.vector_db = vector_db
+                    save_document_metadata(doc_name, doc_type)
+                    
+    except Exception as e:
+        st.error(f"Document processing error: {str(e)}")
+
+def load_doc_to_db():
+    """Load documents to vector database"""
+    if "rag_docs" in st.session_state and st.session_state.rag_docs:
+        docs = []
+        for doc_file in st.session_state.rag_docs:
+            if doc_file.name not in st.session_state.rag_sources:
+                if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
+                    st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
+                    break
+
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                        tmp_file.write(doc_file.getvalue())
+                        tmp_path = tmp_file.name
+
+                    loader = None
+                    if doc_file.type == "application/pdf":
+                        loader = PyPDFLoader(tmp_path)
+                    elif doc_file.name.endswith(".docx"):
+                        loader = Docx2txtLoader(tmp_path)
+                    elif doc_file.type in ["text/plain", "text/markdown"]:
+                        loader = TextLoader(tmp_path)
+
+                    if loader:
+                        docs = loader.load()
+                        process_documents(docs, doc_file.name, doc_file.type)
+                        st.session_state.rag_sources.append(doc_file.name)
+                    
+                    os.unlink(tmp_path)
+                            
+                except Exception as e:
+                    st.error(f"Error loading {doc_file.name}: {str(e)}")
+
+        if docs:
+            st.success(f"Documents loaded successfully!")
+
+def load_url_to_db():
+    """Load URL content to vector database"""
+    if "rag_url" in st.session_state and st.session_state.rag_url:
+        url = st.session_state.rag_url
+        if url not in st.session_state.rag_sources:
+            if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
+                st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
+                return
+
+            try:
+                loader = WebBaseLoader(url)
+                docs = loader.load()
+                process_documents(docs, url, "url")
+                st.session_state.rag_sources.append(url)
+                st.success(f"URL content loaded successfully!")
+            except Exception as e:
+                st.error(f"Error loading URL: {str(e)}")
+
+def initialize_documents():
+    """Load document metadata from Pinecone on startup"""
+    load_persisted_documents()
+
+def get_rag_chain(llm):
+    """Create RAG chain for conversational retrieval"""
+    retriever = st.session_state.vector_db.as_retriever(
+        search_kwargs={"k": 3}
+    )
+    
+    context_prompt = ChatPromptTemplate.from_messages([
+        MessagesPlaceholder(variable_name="messages"),
+        ("user", "{input}"),
+        ("user", "Generate a search query based on our conversation, focusing on recent messages.")
+    ])
+    
+    retriever_chain = create_history_aware_retriever(llm, retriever, context_prompt)
+    
+    response_prompt = ChatPromptTemplate.from_messages([
+        ("system", "Answer based on the context and your knowledge. Context: {context}"),
+        MessagesPlaceholder(variable_name="messages"),
+        ("user", "{input}")
+    ])
+    
+    return create_retrieval_chain(
+        retriever_chain,
+        create_stuff_documents_chain(llm, response_prompt)
+    )
+
+def stream_llm_response(llm_stream, messages):
+    """Stream LLM response without RAG"""
+    response_message = ""
+    for chunk in llm_stream.stream(messages):
+        response_message += chunk.content
+        yield chunk.content
+    st.session_state.messages.append({"role": "assistant", "content": response_message})
+
+def stream_llm_rag_response(llm_stream, messages):
+    """Stream RAG-enhanced LLM response"""
+    rag_chain = get_rag_chain(llm_stream)
+    response_message = "🔍 "
+    
+    for chunk in rag_chain.pick("answer").stream({
+        "messages": messages[:-1],
+        "input": messages[-1].content
+    }):
+        response_message += chunk
+        yield chunk
+        
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": response_message
+    })
