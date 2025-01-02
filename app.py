@@ -62,17 +62,11 @@ with st.sidebar:
     if "use_rag" not in st.session_state:
         st.session_state.use_rag = False  # Default to False
 
-    st.write(f"Sidebar: Before RAG Toggle - st.session_state.vector_db is {st.session_state.vector_db}")
-    st.write(f"Sidebar: Before RAG Toggle - st.session_state.use_rag is {st.session_state.use_rag}")
-
     st.session_state.use_rag = st.toggle(
         "Enable RAG",
         value=st.session_state.vector_db is not None,
         disabled=st.session_state.vector_db is None
     )
-
-    st.write(f"Sidebar: After RAG Toggle - st.session_state.vector_db is {st.session_state.vector_db}")
-    st.write(f"Sidebar: After RAG Toggle - st.session_state.use_rag is {st.session_state.use_rag}")
 
     if st.button("Clear Chat", type="primary"):
         st.session_state.messages = [
@@ -90,9 +84,7 @@ with st.sidebar:
         key="rag_docs"
     )
     if uploaded_files:
-        st.write("app.py: Uploaded files detected, calling load_doc_to_db")
         load_doc_to_db(uploaded_files)
-        st.write(f"app.py: After load_doc_to_db - st.session_state.vector_db is {st.session_state.vector_db}")
 
     url_input = st.text_input(
         "Add Website URL",
@@ -100,21 +92,14 @@ with st.sidebar:
         key="rag_url"
     )
     if url_input:
-        st.write("app.py: URL input detected, calling load_url_to_db")
         load_url_to_db(url_input)
-        st.write(f"app.py: After load_url_to_db - st.session_state.vector_db is {st.session_state.vector_db}")
 
     with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
         st.write(st.session_state.rag_sources)
         if "documents_loaded" not in st.session_state:
-            st.write("Expander: documents_loaded not in session_state")
             if "session_id" in st.session_state:  # Ensure session_id is initialized
-                st.write("Expander: session_id found, calling initialize_documents")
                 initialize_documents()
                 st.session_state.documents_loaded = True
-                st.write("Expander: documents_loaded set to True")
-        else:
-            st.write("Expander: documents_loaded is in session_state")
 
 # Main chat interface
 if not google_api_key:
@@ -128,16 +113,10 @@ else:
         streaming=True
     )
 
-     # Display chat messages
-    for i, message in enumerate(st.session_state.messages):
-        st.write(f"Debugging message[{i}]: {message}, type: {type(message)}")
-        if not hasattr(message, 'type'):
-            st.error(f"Error: message[{i}] does not have a 'type' attribute. Type: {type(message)}, Attributes: {message.__dict__ if hasattr(message, '__dict__') else dir(message)}")
-        try:
-            with st.chat_message(message.type):  # Use message.type here
-                st.markdown(message.content)
-        except Exception as e:
-            st.error(f"Error displaying message[{i}]: {e}")
+    # Display chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message.type):
+            st.markdown(message.content)
 
     # Chat input and response
     if prompt := st.chat_input("Your message"):
@@ -146,11 +125,7 @@ else:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            st.write(f"Chat Loop: st.session_state.use_rag is {st.session_state.use_rag}")
-            st.write(f"Chat Loop: st.session_state.vector_db is {st.session_state.vector_db}")
             if st.session_state.use_rag and st.session_state.vector_db is not None:
-                st.write("Chat Loop: Executing RAG Response")
                 st.write_stream(stream_llm_rag_response(llm, st.session_state.messages))
             else:
-                st.write("Chat Loop: Executing Non-RAG Response")
                 st.write_stream(stream_llm_response(llm, st.session_state.messages))
