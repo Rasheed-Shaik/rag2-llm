@@ -134,7 +134,7 @@ else:
             st.markdown(message["content"])
 
     # Chat input and response
-    if prompt := st.chat_input("Your message"):
+       if prompt := st.chat_input("Your message"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -144,7 +144,9 @@ else:
             st.write(f"Chat Loop: st.session_state.vector_db is {st.session_state.vector_db}")
             if st.session_state.use_rag and st.session_state.vector_db is not None:
                 st.write("Chat Loop: Executing RAG Response")
-                st.write_stream(stream_llm_rag_response(llm, messages))
+                # Corrected line:
+                st.write_stream(stream_llm_rag_response(llm, st.session_state.messages))
             else:
                 st.write("Chat Loop: Executing Non-RAG Response")
-                st.write_stream(stream_llm_response(llm, messages))
+                # Corrected line:
+                st.write_stream(stream_llm_response(llm, st.session_state.messages))
