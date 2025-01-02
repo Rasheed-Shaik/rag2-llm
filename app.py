@@ -47,7 +47,9 @@ if not st.session_state.messages:
         st.error(f"NameError during message initialization: {e}. Please ensure 'langchain' is installed.")
 
 # Initialize persisted documents on app start/reload (call unconditionally)
+print("app.py: Before calling initialize_documents()")  # Added print statement
 initialize_documents()
+print("app.py: After calling initialize_documents()")   # Added print statement
 
 # Initialize vector database if not already initialized
 if st.session_state.vector_db is None and st.session_state.rag_sources:

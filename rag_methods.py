@@ -82,7 +82,9 @@ def save_document_metadata(doc_name: str, doc_type: str):
         st.error(f"Error saving document metadata: {str(e)}")
 
 def get_metadata_store():
+    print("Entering get_metadata_store()") # Log entry
     if "metadata_store" not in st.session_state:
+        print("metadata_store not in session_state, initializing...")
         try:
             embedding_function = get_embedding_function()
             index = initialize_pinecone()
@@ -93,9 +95,14 @@ def get_metadata_store():
                 namespace=METADATA_NAMESPACE,
                 text_key="page_content"
             )
+            print("metadata_store initialized successfully.")
         except Exception as e:
             st.error(f"Error initializing metadata store: {str(e)}")
+            print(f"Error details in get_metadata_store: {str(e)}")
             return None
+    else:
+        print("metadata_store found in session_state.")
+    print("Exiting get_metadata_store()") # Log exit
     return st.session_state.metadata_store
 
 def load_persisted_documents():
@@ -129,6 +136,7 @@ def load_persisted_documents():
     except Exception as e:
         st.error(f"Error loading persisted documents: {str(e)}")
         print(f"Error details: {str(e)}") # Log error details
+    print("Exiting load_persisted_documents()") # Log exit
 
 def initialize_documents():
     print("Entering initialize_documents()") # Log entry
