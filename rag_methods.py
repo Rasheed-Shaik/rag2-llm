@@ -156,10 +156,14 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
         embedding_function = get_embedding_function()
         index = initialize_pinecone()  # Get the Pinecone Index object
 
+        st.write(f"initialize_vector_db: Value of index after initialize_pinecone: {index}") # ADDED
+
         if index is None:
             st.error("Failed to initialize Pinecone index.")
             st.write("initialize_vector_db: END - Pinecone initialization failed")
             return None
+
+        st.write("initialize_vector_db: Index is not None, proceeding with LangchainPinecone") # ADDED
 
         vector_db = LangchainPinecone.from_documents(
             documents=docs,
