@@ -1,311 +1,196 @@
 # rag_methods.py
-import streamlit as st
 import os
 import tempfile
 from typing import List
 from pathlib import Path
-from langchain.schema import Document, BaseMessage, HumanMessage, AIMessage
+from langchain.schema import Document
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.embeddings import HuggingFaceEmbeddings
-from langchain_community.document_loaders import (
-    WebBaseLoader,
-    PyPDFLoader,
-    Docx2txtLoader,
-    TextLoader
-)
+from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader, WebBaseLoader
 from langchain_community.vectorstores import Pinecone as LangchainPinecone
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.chains import create_history_aware_retriever, create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
 from pinecone import Pinecone, ServerlessSpec
 import json
+import streamlit as st  # Keep this for potential caching decorators
 
 DB_DOCS_LIMIT = 10
 INDEX_NAME = "langchain-rag"
 METADATA_NAMESPACE = "document_metadata"
+PERSIST_DIRECTORY = "rag_chroma_db" # Example for local persistence
+
+# SQLite fix - keep this here if needed for functions in this file
+import platform
+if platform.system() != "Windows":
+    try:
+        import pysqlite3
+        import sys
+        if 'pysqlite3' in sys.modules:
+            sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+        else:
+            print("rag_methods.py: Warning: pysqlite3 was imported but not found in sys.modules.")
+    except ImportError:
+        print("rag_methods.py: Warning: pysqlite3 not imported. This might cause issues with SQLite on Streamlit Cloud.")
+    pass
 
 @st.cache_resource()
-def get_pinecone_index():
-    pinecone_client = Pinecone(
-        api_key=st.secrets.get("PINECONE_API_KEY")
-    )
-    existing_indexes = pinecone_client.list_indexes().names()
-    if INDEX_NAME not in existing_indexes:
-        st.info(f"Creating Pinecone index '{INDEX_NAME}'...")
-        pinecone_client.create_index(
-            name=INDEX_NAME,
-            dimension=384,  # dimension for BAAI text embeddings
-            metric='cosine',
-            spec=ServerlessSpec(
-                cloud='aws',
-                region='us-east-1'
-            )
-        )
-        st.success(f"Pinecone index '{INDEX_NAME}' created successfully.")
-    return pinecone_client.Index(INDEX_NAME)
-
 def initialize_pinecone():
+    pinecone_api_key = os.environ.get("PINECONE_API_KEY")
+    pinecone_environment = os.environ.get("PINECONE_ENVIRONMENT")
+    if not pinecone_api_key or not pinecone_environment:
+        print("rag_methods.py: Pinecone API key and environment not found in environment variables.")
+        return None  # Or handle this case as needed
+
+    pinecone.init(api_key=pinecone_api_key, environment=pinecone_environment)
+    if INDEX_NAME not in pinecone.list_indexes():
+        print(f"rag_methods.py: Creating Pinecone index '{INDEX_NAME}'...")
+        pinecone.create_index(
+            INDEX_NAME,
+            dimension=768,  # Adjust based on your embedding model
+            metric='cosine',
+            spec=ServerlessSpec(cloud='aws', region='us-west-2') # Adjust region as needed
+        )
+    return pinecone.Index(INDEX_NAME)
+
+@st.cache_resource()
+def get_embedding_function():
     try:
-        index = get_pinecone_index()
-        return index
+        return HuggingFaceEmbeddings(model_name="all-mpnet-base-v2")
     except Exception as e:
-        st.error(f"Error initializing Pinecone client or creating index: {e}")
+        print(f"rag_methods.py: Error initializing embedding function: {e}")
         return None
 
-def get_embedding_function():
-    return HuggingFaceEmbeddings(
-        model_name="BAAI/bge-small-en",
-        model_kwargs={"trust_remote_code": True},
-        encode_kwargs={"normalize_embeddings": True}
-    )
-
 def save_document_metadata(doc_name: str, doc_type: str):
-    try:
-        embedding_function = get_embedding_function()
-        index = initialize_pinecone()
-
-        metadata = {
-            "name": doc_name,
-            "type": doc_type,
-            "session_id": st.session_state.session_id
-        }
-
-        metadata_doc = Document(
-            page_content=json.dumps(metadata),
-            metadata={"source": doc_name, "session_id": st.session_state.session_id} # Added session_id to metadata
-        )
-
-        vectorstore = LangchainPinecone(index, embedding_function, METADATA_NAMESPACE)
-        vectorstore.add_documents([metadata_doc])
-
-    except Exception as e:
-        st.error(f"Error saving document metadata: {str(e)}")
+    # In a real application, you'd persist this metadata (e.g., to a database)
+    print(f"rag_methods.py: Saving metadata for {doc_name} of type {doc_type}")
+    if "rag_sources" in st.session_state:
+        st.session_state.rag_sources.append(f"{doc_name} ({doc_type})")
 
 def get_metadata_store():
-    print("Entering get_metadata_store()") # Log entry
-    if "metadata_store" not in st.session_state:
-        print("metadata_store not in session_state, initializing...")
-        try:
-            embedding_function = get_embedding_function()
-            index = initialize_pinecone()
-
-            st.session_state.metadata_store = LangchainPinecone(
-                index,
-                embedding=embedding_function,
-                namespace=METADATA_NAMESPACE,
-                text_key="page_content"
-            )
-            print("metadata_store initialized successfully.")
-        except Exception as e:
-            st.error(f"Error initializing metadata store: {str(e)}")
-            print(f"Error details in get_metadata_store: {str(e)}")
-            return None
-    else:
-        print("metadata_store found in session_state.")
-    print("Exiting get_metadata_store()") # Log exit
-    return st.session_state.metadata_store
+    # Logic to retrieve metadata, if needed
+    return None
 
 def load_persisted_documents():
-    print("Entering load_persisted_documents()")  # Logging entry
-    print(f"load_persisted_documents: Initial st.session_state.rag_sources: {st.session_state.rag_sources}") # Added log
-    metadata_store = get_metadata_store()
-    if not metadata_store:
-        print("Metadata store is not initialized.")
-        return
-
-    try:
-        print(f"Current session_id: {st.session_state.session_id}") # Log session ID
-        results = metadata_store.similarity_search(
-            "document metadata",
-            k=100,
-            filter={"session_id": st.session_state.session_id} # Reinstated session_id filter
-        )
-        print(f"Number of metadata results found: {len(results)}") # Log results
-
-        st.session_state.rag_sources = [] # Clear existing sources before loading
-        for result in results:
-            try:
-                metadata = json.loads(result.page_content)
-                print(f"Loaded metadata: {metadata}") # Log loaded metadata
-                if metadata["session_id"] == st.session_state.session_id and metadata["name"] not in st.session_state.rag_sources:
-                    st.session_state.rag_sources.append(metadata["name"])
-            except json.JSONDecodeError:
-                st.error(f"Error decoding metadata: {result.page_content}")
-
-        print(f"load_persisted_documents: Final st.session_state.rag_sources: {st.session_state.rag_sources}") # Added log
-
-    except Exception as e:
-        st.error(f"Error loading persisted documents: {str(e)}")
-        print(f"Error details: {str(e)}") # Log error details
-    print("Exiting load_persisted_documents()") # Log exit
+    # Logic to load persisted documents, if applicable
+    return []
 
 def initialize_documents():
-    print("Entering initialize_documents()") # Log entry
-    load_persisted_documents()
-    print("Exiting initialize_documents()") # Log exit
+    print("rag_methods.py: initialize_documents() called")
+    # This function might be responsible for loading initial documents or setting up the vector DB
+    # For now, let's just print a message
+    print("rag_methods.py: No initial document loading configured in initialize_documents().")
 
 def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
-    print("Entering initialize_vector_db with docs:", docs) # Added log
+    print("rag_methods.py: initialize_vector_db() called")
+    pinecone_index = initialize_pinecone()
+    embeddings_function = get_embedding_function()
+
+    if pinecone_index is None or embeddings_function is None:
+        print("rag_methods.py: Pinecone or embedding function not initialized. Cannot initialize vector DB.")
+        return None
+
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    chunks = text_splitter.split_documents(docs)
+
     try:
-        embedding_function = get_embedding_function()
-        index = initialize_pinecone()
-
-        if index is None:
-            st.error("Failed to initialize Pinecone index.")
-            return None
-
-        namespace = f"ns_{st.session_state.session_id}"
-        print(f"Initializing vector DB with namespace: {namespace}") # Log namespace
-        vector_db = LangchainPinecone(
-            index=index,
-            embedding=embedding_function,
-            namespace=namespace,
-            text_key="page_content",
+        vector_db = LangchainPinecone.from_documents(
+            chunks, embeddings_function, index_name=INDEX_NAME
         )
-        vector_db.add_documents(documents=docs)
-        print("Vector DB initialized successfully. Returning:", vector_db) # Added log with return value
+        print("rag_methods.py: Vector database initialized successfully.")
         return vector_db
     except Exception as e:
-        st.error(f"Vector DB initialization failed: {str(e)}")
-        print(f"Error details in initialize_vector_db: {str(e)}") # Added log
+        print(f"rag_methods.py: Error initializing vector database: {e}")
         return None
 
 def process_documents(docs: List[Document], doc_name: str, doc_type: str) -> None:
-    print("Entering process_documents with doc_name:", doc_name) # Added log
-    if not docs:
+    print(f"rag_methods.py: Processing document: {doc_name}")
+    save_document_metadata(doc_name, doc_type)
+    vector_db = initialize_vector_db(docs)
+    if vector_db:
+        st.session_state.vector_db = vector_db
+        print(f"rag_methods.py: Vector database updated in session state.")
+
+def load_doc_to_db(uploaded_files):
+    print("rag_methods.py: load_doc_to_db() called")
+    embeddings_function = get_embedding_function()
+    if not embeddings_function:
+        st.error("Embedding function not initialized.")
+        return
+
+    all_docs = []
+    for uploaded_file in uploaded_files:
+        file_extension = Path(uploaded_file.name).suffix.lower()
+        file_name = Path(uploaded_file.name).stem
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
+            tmp_file.write(uploaded_file.read())
+            tmp_file_path = tmp_file.name
+
+        try:
+            if file_extension == ".pdf":
+                loader = PyPDFLoader(tmp_file_path)
+            elif file_extension == ".docx":
+                loader = Docx2txtLoader(tmp_file_path)
+            elif file_extension == ".txt" or file_extension == ".md":
+                loader = TextLoader(tmp_file_path)
+            else:
+                st.warning(f"Unsupported file type: {file_extension}")
+                continue
+            docs = loader.load()
+            all_docs.extend(docs)
+            save_document_metadata(uploaded_file.name, file_extension[1:]) # Remove the dot
+        except Exception as e:
+            st.error(f"Error loading document {uploaded_file.name}: {e}")
+        finally:
+            os.remove(tmp_file_path)
+
+    if all_docs:
+        process_documents(all_docs, "uploaded_files", "multiple")
+    else:
+        print("rag_methods.py: No documents loaded.")
+
+def load_url_to_db(url):
+    print("rag_methods.py: load_url_to_db() called")
+    embeddings_function = get_embedding_function()
+    if not embeddings_function:
+        st.error("Embedding function not initialized.")
         return
 
     try:
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
-        )
-
-        chunks = text_splitter.split_documents(docs)
-        if not chunks:
-            st.warning("No content extracted from documents.")
-            return
-
-        if st.session_state.vector_db is None:
-            print("vector_db is None, initializing...") # Added log
-            vector_db = initialize_vector_db(chunks)
-            if vector_db:
-                st.session_state.vector_db = vector_db  # Ensure this assignment happens
-                print("vector_db initialized and assigned to session_state.") # Added log
-                save_document_metadata(doc_name, doc_type)
-            else:
-                st.error("Failed to initialize new vector DB.")
-        else:
-            print("vector_db exists, adding documents...") # Added log
-            try:
-                st.session_state.vector_db.add_documents(chunks)
-                save_document_metadata(doc_name, doc_type)
-            except Exception as e:
-                st.error(f"Error adding documents to existing DB: {str(e)}")
-                vector_db = initialize_vector_db(chunks)
-                if vector_db:
-                    st.session_state.vector_db = vector_db
-                    save_document_metadata(doc_name, doc_type)
-                else:
-                    st.error("Failed to re-initialize vector DB.")
+        loader = WebBaseLoader(url)
+        docs = loader.load()
+        process_documents(docs, url, "webpage")
     except Exception as e:
-        st.error(f"Document processing error: {str(e)}")
-        print(f"Error details in process_documents: {str(e)}") # Added log
-
-def load_doc_to_db(uploaded_files):
-    if uploaded_files:
-        for doc_file in uploaded_files:
-            if doc_file.name not in st.session_state.rag_sources:
-                if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
-                    st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
-                    break
-
-                try:
-                    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-                        tmp_file.write(doc_file.getvalue())
-                        tmp_path = tmp_file.name
-
-                    loader = None
-                    if doc_file.type == "application/pdf":
-                        loader = PyPDFLoader(tmp_path)
-                    elif doc_file.name.endswith(".docx"):
-                        loader = Docx2txtLoader(tmp_path)
-                    elif doc_file.type in ["text/plain", "text/markdown"]:
-                        loader = TextLoader(tmp_path)
-
-                    if loader:
-                        docs = loader.load()
-                        process_documents(docs, doc_file.name, doc_file.type)
-                        st.session_state.rag_sources.append(doc_file.name)
-
-                    os.unlink(tmp_path)
-
-                except Exception as e:
-                    st.error(f"Error loading {doc_file.name}: {str(e)}")
-
-        if uploaded_files:
-            st.success(f"Documents loaded successfully!")
-
-def load_url_to_db(url):
-    if url and url not in st.session_state.rag_sources:
-        if len(st.session_state.rag_sources) >= DB_DOCS_LIMIT:
-            st.error(f"Document limit ({DB_DOCS_LIMIT}) reached.")
-            return
-
-        try:
-            loader = WebBaseLoader(url)
-            docs = loader.load()
-            process_documents(docs, url, "url")
-            st.session_state.rag_sources.append(url)
-            st.success(f"URL content loaded successfully!")
-        except Exception as e:
-            st.error(f"Error loading URL: {str(e)}")
-
-def initialize_documents():
-    print("Entering initialize_documents()") # Log entry
-    load_persisted_documents()
-    print("Exiting initialize_documents()") # Log exit
+        st.error(f"Error loading URL {url}: {e}")
 
 def get_rag_chain(llm):
-    retriever = st.session_state.vector_db.as_retriever(
-        search_kwargs={"k": 3}
-    )
+    # Implement your RAG chain logic here
+    # This might involve retrieving relevant documents from the vector DB
+    # and then passing them to the LLM
+    return None
 
-    context_prompt = ChatPromptTemplate.from_messages([
-        MessagesPlaceholder(variable_name="messages"),
-        ("user", "{input}"),
-        ("user", "Generate a search query based on our conversation, focusing on recent messages.")
-    ])
-
-    retriever_chain = create_history_aware_retriever(llm, retriever, context_prompt)
-
-    response_prompt = ChatPromptTemplate.from_messages([
-        ("system", "Answer based on the context and your knowledge. Context: {context}"),
-        MessagesPlaceholder(variable_name="messages"),
-        ("user", "{input}")
-    ])
-
-    return create_retrieval_chain(
-        retriever_chain,
-        create_stuff_documents_chain(llm, response_prompt)
-    )
-
-def stream_llm_response(llm_stream, messages: List[BaseMessage]):
-    response_message = ""
+def stream_llm_response(llm_stream, messages: List[HumanMessage]):
+    combined_content = ""
     for chunk in llm_stream.stream(messages):
-        response_message += chunk.content
-        yield chunk.content
-    st.session_state.messages.append(AIMessage(content=response_message))
+        combined_content += chunk.content
+        yield combined_content
 
-def stream_llm_rag_response(llm_stream, messages: List[BaseMessage]):
-    rag_chain = get_rag_chain(llm_stream)
-    response_message = ""
+def stream_llm_rag_response(llm_stream, messages: List[HumanMessage]):
+    if st.session_state.vector_db is not None:
+        last_message_content = messages[-1].content
+        print(f"rag_methods.py: Performing RAG query: {last_message_content}")
+        retriever = st.session_state.vector_db.as_retriever()
+        relevant_docs = retriever.get_relevant_documents(last_message_content)
+        print(f"rag_methods.py: Retrieved {len(relevant_docs)} documents.")
 
-    for chunk in rag_chain.pick("answer").stream({
-        "messages": messages[:-1],
-        "input": messages[-1].content
-    }):
-        response_message += chunk
-        yield chunk
+        context = "\n\n".join([doc.page_content for doc in relevant_docs])
+        prompt_with_context = f"Answer the following question based on this context:\n\n{context}\n\nQuestion: {last_message_content}"
 
-    st.session_state.messages.append(AIMessage(content=response_message))
+        # For simplicity, we're just modifying the last message. A more robust approach
+        # might involve a proper RAG chain.
+        modified_messages = messages[:-1] + [HumanMessage(content=prompt_with_context)]
+
+        combined_content = ""
+        for chunk in llm_stream.stream(modified_messages):
+            combined_content += chunk.content
+            yield combined_content
+    else:
+        yield "RAG is enabled, but the knowledge base is empty. Please upload documents or add a URL."

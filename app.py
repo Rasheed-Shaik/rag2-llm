@@ -1,9 +1,14 @@
+# app.py
 import streamlit as st
 import os
 import uuid
+import platform
+from pathlib import Path
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.schema import HumanMessage, AIMessage
+from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db, initialize_documents
 
 # SQLite fix for Streamlit Cloud
-import platform
 if platform.system() != "Windows":
     try:
         import pysqlite3
@@ -11,17 +16,12 @@ if platform.system() != "Windows":
         if 'pysqlite3' in sys.modules:
             sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
         else:
-            print("Warning: pysqlite3 was imported but not found in sys.modules.")
+            print("app.py: Warning: pysqlite3 was imported but not found in sys.modules.")
     except ImportError:
-        print("Warning: pysqlite3 not imported. This might cause issues with SQLite on Streamlit Cloud.")
-        pass
+        print("app.py: Warning: pysqlite3 not imported. This might cause issues with SQLite on Streamlit Cloud.")
+    pass
 
-from pathlib import Path
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import HumanMessage, AIMessage
-from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db, initialize_documents, initialize_vector_db
-
-# Streamlit page configuration - MOVE THIS TO THE TOP
+# Streamlit page configuration
 st.set_page_config(
     page_title="RAG Chat App",
     page_icon="📚",
@@ -29,7 +29,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize session states (move to the very top, after set_page_config)
+# Initialize session states
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 if "rag_sources" not in st.session_state:
@@ -40,7 +40,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "documents_loaded" not in st.session_state:
     st.session_state.documents_loaded = False
-if "initial_load_triggered" not in st.session_state:  # New flag
+if "initial_load_triggered" not in st.session_state:
     st.session_state.initial_load_triggered = False
 
 # Initialize default messages only if messages is empty
@@ -49,9 +49,9 @@ if not st.session_state.messages:
         st.session_state.messages.append(HumanMessage(content="Hello"))
         st.session_state.messages.append(AIMessage(content="Hi there! How can I assist you today."))
     except NameError as e:
-        st.error(f"NameError during message initialization: {e}. Please ensure 'langchain' is installed.")
+        st.error(f"app.py: NameError during message initialization: {e}. Please ensure 'langchain' is installed.")
 
-# Initialize persisted documents on app start (call conditionally and with a flag)
+# Initialize persisted documents on app start
 print("app.py: Before potentially calling initialize_documents()")
 if not st.session_state.initial_load_triggered:
     print("app.py: Calling initialize_documents()")
@@ -69,7 +69,6 @@ st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant �
 with st.sidebar:
     # API Key Management - Check secrets first, then environment, then input
     google_api_key = st.secrets.get("google_api_key", "") if hasattr(st, "secrets") else ""
-
     # Only show API input if no key in secrets
     if not google_api_key:
         google_api_key = st.text_input(
@@ -84,13 +83,13 @@ with st.sidebar:
         st.session_state.use_rag = False  # Default to False
 
     # Disable RAG toggle if vector_db is not initialized
-    print(f"app.py: Before RAG toggle - st.session_state.vector_db is {st.session_state.vector_db}") # Added log
+    print(f"app.py: Before RAG toggle - st.session_state.vector_db is {st.session_state.vector_db}")
     st.session_state.use_rag = st.toggle(
         "Enable RAG",
         value=st.session_state.vector_db is not None,
         disabled=st.session_state.vector_db is None
     )
-    print(f"app.py: After RAG toggle - st.session_state.use_rag is {st.session_state.use_rag}") # Added log
+    print(f"app.py: After RAG toggle - st.session_state.use_rag is {st.session_state.use_rag}")
 
     if st.button("Clear Chat", type="primary"):
         st.session_state.messages = [
@@ -109,8 +108,8 @@ with st.sidebar:
     )
     if uploaded_files:
         load_doc_to_db(uploaded_files)
-        print(f"app.py: After load_doc_to_db - st.session_state.vector_db is {st.session_state.vector_db}") # Added log
-        print(f"app.py: After load_doc_to_db - st.session_state.rag_sources is {st.session_state.rag_sources}") # Added log
+        print(f"app.py: After load_doc_to_db - st.session_state.vector_db is {st.session_state.vector_db}")
+        print(f"app.py: After load_doc_to_db - st.session_state.rag_sources is {st.session_state.rag_sources}")
 
     url_input = st.text_input(
         "Add Website URL",
@@ -119,8 +118,8 @@ with st.sidebar:
     )
     if url_input:
         load_url_to_db(url_input)
-        print(f"app.py: After load_url_to_db - st.session_state.vector_db is {st.session_state.vector_db}") # Added log
-        print(f"app.py: After load_url_to_db - st.session_state.rag_sources is {st.session_state.rag_sources}") # Added log
+        print(f"app.py: After load_url_to_db - st.session_state.vector_db is {st.session_state.vector_db}")
+        print(f"app.py: After load_url_to_db - st.session_state.rag_sources is {st.session_state.rag_sources}")
 
     with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
         st.write(st.session_state.rag_sources)
@@ -136,7 +135,6 @@ else:
         temperature=0.7,
         streaming=True
     )
-
     # Display chat messages
     for message in st.session_state.messages:
         with st.chat_message(message.type):
