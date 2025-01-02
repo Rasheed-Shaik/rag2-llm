@@ -107,6 +107,7 @@ def get_metadata_store():
 
 def load_persisted_documents():
     print("Entering load_persisted_documents()")  # Logging entry
+    print(f"load_persisted_documents: Initial st.session_state.rag_sources: {st.session_state.rag_sources}") # Added log
     metadata_store = get_metadata_store()
     if not metadata_store:
         print("Metadata store is not initialized.")
@@ -131,7 +132,7 @@ def load_persisted_documents():
             except json.JSONDecodeError:
                 st.error(f"Error decoding metadata: {result.page_content}")
 
-        print(f"rag_sources after loading: {st.session_state.rag_sources}") # Log final rag_sources
+        print(f"load_persisted_documents: Final st.session_state.rag_sources: {st.session_state.rag_sources}") # Added log
 
     except Exception as e:
         st.error(f"Error loading persisted documents: {str(e)}")
@@ -162,7 +163,7 @@ def initialize_vector_db(docs: List[Document]) -> LangchainPinecone:
             text_key="page_content",
         )
         vector_db.add_documents(documents=docs)
-        print("Vector DB initialized successfully.") # Added log
+        print("Vector DB initialized successfully. Returning:", vector_db) # Added log with return value
         return vector_db
     except Exception as e:
         st.error(f"Vector DB initialization failed: {str(e)}")

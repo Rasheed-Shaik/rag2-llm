@@ -1,3 +1,4 @@
+print("THIS IS A TEST PRINT STATEMENT")
 import streamlit as st
 import os
 import uuid
@@ -105,6 +106,8 @@ with st.sidebar:
     )
     if uploaded_files:
         load_doc_to_db(uploaded_files)
+        print(f"app.py: After load_doc_to_db - st.session_state.vector_db is {st.session_state.vector_db}") # Added log
+        print(f"app.py: After load_doc_to_db - st.session_state.rag_sources is {st.session_state.rag_sources}") # Added log
 
     url_input = st.text_input(
         "Add Website URL",
@@ -113,6 +116,8 @@ with st.sidebar:
     )
     if url_input:
         load_url_to_db(url_input)
+        print(f"app.py: After load_url_to_db - st.session_state.vector_db is {st.session_state.vector_db}") # Added log
+        print(f"app.py: After load_url_to_db - st.session_state.rag_sources is {st.session_state.rag_sources}") # Added log
 
     with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
         st.write(st.session_state.rag_sources)
