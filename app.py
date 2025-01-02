@@ -129,9 +129,15 @@ else:
     )
 
     # Display chat messages
-    for message in st.session_state.messages:
-        with st.chat_message(message.role):
-            st.markdown(message.content)
+    for i, message in enumerate(st.session_state.messages):
+        st.write(f"Debugging message[{i}]: {message}, type: {type(message)}")
+        if not hasattr(message, 'role'):
+            st.error(f"Error: message[{i}] does not have a 'role' attribute. Type: {type(message)}, Attributes: {message.__dict__ if hasattr(message, '__dict__') else dir(message)}")
+        try:
+            with st.chat_message(message.role):
+                st.markdown(message.content)
+        except Exception as e:
+            st.error(f"Error displaying message[{i}]: {e}")
 
     # Chat input and response
     if prompt := st.chat_input("Your message"):
