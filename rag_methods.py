@@ -78,14 +78,13 @@ def save_document_metadata(doc_name: str, doc_type: str):
             metadata={"source": doc_name} # Add source for filtering
         )
 
-        vectorstore = LangchainPinecone(index, embedding_function, METADATA_NAMESPACE, text_key="page_content")
+        vectorstore = LangchainPinecone(index, embedding_function, METADATA_NAMESPACE) # Removed text_key
         vectorstore.add_documents([metadata_doc])
         st.write("save_document_metadata: END - Metadata saved")
 
     except Exception as e:
         st.error(f"Error saving document metadata: {str(e)}")
         st.write("save_document_metadata: END - Error")
-
 def get_metadata_store():
     """Get or initialize the metadata store."""
     if "metadata_store" not in st.session_state:
