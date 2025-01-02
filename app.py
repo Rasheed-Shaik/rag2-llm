@@ -6,10 +6,14 @@ import uuid
 import platform
 if platform.system() != "Windows":
     try:
-        __import__('pysqlite3')
+        import pysqlite3
         import sys
-        sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+        if 'pysqlite3' in sys.modules:
+            sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+        else:
+            print("Warning: pysqlite3 was imported but not found in sys.modules.")
     except ImportError:
+        print("Warning: pysqlite3 not imported. This might cause issues with SQLite on Streamlit Cloud.")
         pass
 
 from pathlib import Path
