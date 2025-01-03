@@ -138,7 +138,7 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
         # Check if the index exists
         st.write(f"Checking if Pinecone index '{pinecone_index_name}' exists...")
         index_names_method = pinecone_client.list_indexes() # Get the method object
-        index_names = index_names_method.names if hasattr(index_names_method, 'names') else [] # Call the method and access names
+        index_names = index_names_method().names if hasattr(index_names_method, '__call__') else [] # Call the method and access names
         st.write(f"Index names: {index_names}") # Debugging output
         if pinecone_index_name not in index_names:
             # Create a new index with the correct dimension
