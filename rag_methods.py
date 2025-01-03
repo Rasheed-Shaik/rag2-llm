@@ -20,7 +20,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_pinecone import Pinecone
-from pinecone import Pinecone as PineconeClient # Import Pinecone class
+from pinecone import Pinecone as PineconeClient, ServerlessSpec # Import Pinecone class and ServerlessSpec
 import tempfile
 
 from typing import List
@@ -121,8 +121,7 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
     try:
         # Initialize Pinecone connection
         st.write("Attempting to initialize Pinecone connection...")
-        # pinecone.init(api_key=pinecone_api_key, environment=pinecone_environment) # Old way
-        PineconeClient(api_key=pinecone_api_key) # New way, but not used directly
+        pinecone_client = PineconeClient(api_key=pinecone_api_key) # New way, but not used directly
         st.write("Pinecone connection initialized successfully.")
 
         # Initialize embedding function
@@ -133,6 +132,29 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
             model_kwargs={"trust_remote_code": True}
         )
         
+        # Get the dimension of the embedding model
+        embedding_dimension = embedding_function.embed_query("test").shape[0]
+
+        # Check if the index exists
+        st.write(f"Checking if Pinecone index '{pinecone_index_name}' exists...")
+        if pinecone_index_name in pinecone_client.list_indexes().names:
+            st.write(f"Pinecone index '{pinecone_index_name}' exists. Deleting it...")
+            pinecone_client.delete_index(pinecone_index_name)
+            st.write(f"Pinecone index '{pinecone_index_name}' deleted.")
+
+        # Create a new index with the correct dimension
+        st.write(f"Creating Pinecone index '{pinecone_index_name}' with dimension {embedding_dimension}...")
+        pinecone_client.create_index(
+            name=pinecone_index_name,
+            dimension=embedding_dimension,
+            metric="cosine",
+            spec=ServerlessSpec(
+                cloud="aws",
+                region=pinecone_environment
+            )
+        )
+        st.write(f"Pinecone index '{pinecone_index_name}' created successfully.")
+
         # Initialize Pinecone vector store
         st.write(f"Attempting to load Pinecone index: {pinecone_index_name}")
         vector_db = Pinecone.from_existing_index(
