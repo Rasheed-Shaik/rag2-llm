@@ -137,7 +137,8 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
 
         # Check if the index exists
         st.write(f"Checking if Pinecone index '{pinecone_index_name}' exists...")
-        if pinecone_index_name in pinecone_client.list_indexes().names:
+        # if pinecone_index_name in pinecone_client.list_indexes().names: # Old way
+        if pinecone_index_name in pinecone_client.list_indexes().names: # New way
             st.write(f"Pinecone index '{pinecone_index_name}' exists. Deleting it...")
             pinecone_client.delete_index(pinecone_index_name)
             st.write(f"Pinecone index '{pinecone_index_name}' deleted.")
