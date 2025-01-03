@@ -122,7 +122,7 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
         # Initialize Pinecone connection
         st.write("Attempting to initialize Pinecone connection...")
         # pinecone.init(api_key=pinecone_api_key, environment=pinecone_environment) # Old way
-        PineconeClient(api_key=st.secrets.get('pinecone_api_key')) # New way, but not used directly
+        PineconeClient(api_key=pinecone_api_key) # New way, but not used directly
         st.write("Pinecone connection initialized successfully.")
 
         # Initialize embedding function
