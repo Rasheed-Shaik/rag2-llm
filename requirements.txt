@@ -183,4 +183,5 @@ zipp==3.21.0
 pysqlite3-binary
 pinecone
 langchain-anthropic
+langchain-openai
 
