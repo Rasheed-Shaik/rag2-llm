@@ -16,7 +16,8 @@ from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks.manager import CallbackManager
 from dotenv import load_dotenv
 import streamlit as st
-from pinecone import ServerlessSpec
+from pinecone import Pinecone, ServerlessSpec
+import time
 
 load_dotenv()
 
@@ -26,17 +27,20 @@ embedding_dimension = 768
 
 # Initialize Pinecone client
 pinecone_api_key = st.secrets.get("PINECONE_API_KEY")
-pinecone_environment = st.secrets.get("PINECONE_ENVIRONMENT")
-pinecone_client = pinecone.Pinecone(api_key=pinecone_api_key, environment=pinecone_environment)
+
+pc = Pinecone(api_key=st.secrets.get("PINECONE_API_KEY"))
+cloud = st.secrets.get('PINECONE_CLOUD') or 'aws'
+region = st.secrets.get('PINECONE_REGION') or 'us-east-1'
+spec = ServerlessSpec(cloud=cloud, region=region)
 
 def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_name):
     """Initializes Pinecone and returns the index."""
     try:
-        index_names = pinecone_client.list_indexes().names() # Corrected line
-        if pinecone_index_name not in index_names:
+        
+        if pinecone_index_name not in pc.list_indexes().names():
             # Create a new index with the correct dimension
             st.write(f"Pinecone index '{pinecone_index_name}' does not exist. Creating it...")
-            pinecone_client.create_index(
+            pc.create_index(
                 name=pinecone_index_name,
                 dimension=embedding_dimension,
                 metric="cosine",
@@ -48,16 +52,11 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
             st.write(f"Pinecone index '{pinecone_index_name}' creation initiated.")
             
             # Wait for the index to be ready
-            while True:
-                index_description = pinecone_client.describe_index(pinecone_index_name)
-                if index_description.status.ready:
-                    st.write(f"Pinecone index '{pinecone_index_name}' is ready.")
-                    break
-                else:
-                    st.write(f"Waiting for Pinecone index '{pinecone_index_name}' to be ready...")
-                    time.sleep(5) # Wait for 5 seconds before checking again
+             # Wait for index to be ready
+            while not pc.describe_index(index_name).status['ready']:
+              time.sleep(1)
         
-        index = pinecone_client.Index(pinecone_index_name)
+        index = pc.Index(pinecone_index_name)
         return index
     except Exception as e:
         st.error(f"Error initializing Pinecone: {e}")
