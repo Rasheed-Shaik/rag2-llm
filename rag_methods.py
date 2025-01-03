@@ -133,7 +133,7 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
         )
         
         # Get the dimension of the embedding model
-        embedding_dimension = embedding_function.embed_query("test").shape[0]
+        embedding_dimension = len(embedding_function.embed_query("test"))
 
         # Check if the index exists
         st.write(f"Checking if Pinecone index '{pinecone_index_name}' exists...")
