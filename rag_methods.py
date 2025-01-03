@@ -137,24 +137,22 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
 
         # Check if the index exists
         st.write(f"Checking if Pinecone index '{pinecone_index_name}' exists...")
-        # if pinecone_index_name in pinecone_client.list_indexes().names: # Old way
-        if pinecone_index_name in pinecone_client.list_indexes().names(): # New way
-            st.write(f"Pinecone index '{pinecone_index_name}' exists. Deleting it...")
-            pinecone_client.delete_index(pinecone_index_name)
-            st.write(f"Pinecone index '{pinecone_index_name}' deleted.")
-
-        # Create a new index with the correct dimension
-        st.write(f"Creating Pinecone index '{pinecone_index_name}' with dimension {embedding_dimension}...")
-        pinecone_client.create_index(
-            name=pinecone_index_name,
-            dimension=embedding_dimension,
-            metric="cosine",
-            spec=ServerlessSpec(
-                cloud="aws",
-                region=pinecone_environment
+        index_names = pinecone_client.list_indexes().names
+        if pinecone_index_name not in index_names:
+            # Create a new index with the correct dimension
+            st.write(f"Pinecone index '{pinecone_index_name}' does not exist. Creating it...")
+            pinecone_client.create_index(
+                name=pinecone_index_name,
+                dimension=embedding_dimension,
+                metric="cosine",
+                spec=ServerlessSpec(
+                    cloud="aws",
+                    region=pinecone_environment
+                )
             )
-        )
-        st.write(f"Pinecone index '{pinecone_index_name}' created successfully.")
+            st.write(f"Pinecone index '{pinecone_index_name}' created successfully.")
+        else:
+            st.write(f"Pinecone index '{pinecone_index_name}' already exists.")
 
         # Initialize Pinecone vector store
         st.write(f"Attempting to load Pinecone index: {pinecone_index_name}")
