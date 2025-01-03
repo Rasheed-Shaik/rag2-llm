@@ -32,7 +32,7 @@ pinecone_client = pinecone.Pinecone(api_key=pinecone_api_key, environment=pineco
 def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_name):
     """Initializes Pinecone and returns the index."""
     try:
-        index_names = [pinecone_client.list_indexes()]# Corrected line
+        index_names = [index.name for index in pinecone_client.list_indexes()]# Corrected line
         st.write(f"Retrieved index names: {index_names}")
         if pinecone_index_name not in index_names:
             # Create a new index with the correct dimension
