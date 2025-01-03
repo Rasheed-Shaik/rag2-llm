@@ -1,136 +1,209 @@
-# app.py
 import streamlit as st
 import os
+import dotenv
 import uuid
 
-# SQLite fix for Streamlit Cloud
-import platform
-if platform.system() != "Windows":
-    try:
-        __import__('pysqlite3')
-        import sys
-        sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-    except ImportError:
-        pass
+# check if it's linux so it works on Streamlit Cloud
+if os.name == 'posix':
+    __import__('pysqlite3')
+    import sys
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
-from pathlib import Path
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import HumanMessage, AIMessage
-from rag_methods import stream_llm_response, stream_llm_rag_response, load_doc_to_db, load_url_to_db, initialize_documents
-import importlib
+from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
+from langchain.schema import HumanMessage,AIMessage
+from rag_methods import (
+    load_doc_to_db, 
+    load_url_to_db,
+    stream_llm_response,
+    stream_llm_rag_response,
+    initialize_pinecone,
+)
 
-print(f"Module name of load_doc_to_db: {load_doc_to_db.__module__}")
-rag_methods = importlib.import_module(load_doc_to_db.__module__)
-print(f"Imported rag_methods from: {rag_methods.__file__}")
+dotenv.load_dotenv()
 
-# Streamlit page configuration
+
+MODELS = ["google/gemini-2.0-flash-exp"]
+
+
 st.set_page_config(
-    page_title="RAG Chat App",
-    page_icon="📚",
-    layout="centered",
+    page_title="RAG LLM app?", 
+    page_icon="📚", 
+    layout="centered", 
     initial_sidebar_state="expanded"
 )
 
-# Initialize session states
+# --- Header ---
+st.markdown("""<h2 style="text-align: center;">📚🔍 <i> Do your LLM even RAG bro? </i> 🤖💬</h2>""", unsafe_allow_html=True)
+
+# --- Initial Setup ---
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
+
 if "rag_sources" not in st.session_state:
     st.session_state.rag_sources = []
-if "vector_db" not in st.session_state:
-    st.session_state.vector_db = None
+
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        HumanMessage(content="Hello"),
-        AIMessage(content="Hi there! How can I assist you today?")
-    ]
-if "documents_loaded" not in st.session_state:
-    st.session_state.documents_loaded = False
-
-# Page header
-st.markdown("""<h2 style="text-align: center;">📚 RAG-Enabled Chat Assistant 🤖</h2>""", unsafe_allow_html=True)
-
-# Sidebar configuration
+        {"role": "user", "content": "Hello"},
+        {"role": "assistant", "content": "Hi there! How can I assist you today?"}
+]
+    
+# --- Side Bar LLM API Tokens ---  
 with st.sidebar:
-    # API Key Management - Check secrets first, then environment, then input
-    google_api_key = st.secrets.get("google_api_key", "") if hasattr(st, "secrets") else ""
+        default_google_api_key = os.getenv("google_api_key") if os.getenv("google_api_key") is not None else ""  # only for development environment, otherwise it should return None
+        with st.popover("🔐 Google"):
+            google_api_key = st.text_input(
+                "Input your Google API Key", 
+                value=default_google_api_key, 
+                type="password",
+                key="google_api_key",
+            )
 
-    # Only show API input if no key in secrets
-    if not google_api_key:
-        google_api_key = st.text_input(
-            "Google API Key",
-            type="password",
-            key="google_api_key"
+        default_anthropic_api_key = os.getenv("ANTHROPIC_API_KEY") if os.getenv("ANTHROPIC_API_KEY") is not None else ""
+        with st.popover("🔐 Anthropic"):
+            anthropic_api_key = st.text_input(
+                "Introduce your Anthropic API Key (https://console.anthropic.com/)", 
+                value=default_anthropic_api_key, 
+                type="password",
+                key="anthropic_api_key",
+            )
+        
+        # Pinecone API key and environment are now loaded from st.secrets
+        pinecone_api_key = st.secrets.get("PINECONE_API_KEY")
+        pinecone_environment = st.secrets.get("PINECONE_ENVIRONMENT")
+        
+        default_pinecone_index_name = os.getenv("PINECONE_INDEX_NAME") if os.getenv("PINECONE_INDEX_NAME") is not None else ""
+        with st.popover("🗂️ Pinecone Index Name"):
+            pinecone_index_name = st.text_input(
+                "Introduce your Pinecone Index Name",
+                value=default_pinecone_index_name,
+                key="pinecone_index_name",
+            )
+    
+
+
+# --- Main Content ---
+# Checking if the user has introduced the OpenAI API Key, if not, a warning is displayed
+missing_google = google_api_key == "" or google_api_key is None
+missing_anthropic = anthropic_api_key == "" or anthropic_api_key is None
+missing_pinecone = pinecone_api_key is None or pinecone_environment is None or pinecone_index_name == ""
+if missing_google or missing_pinecone:
+    st.write("#")
+    st.warning("⬅️ Please introduce an API Key to continue...")
+else:
+    # Sidebar
+    with st.sidebar:
+        st.divider()
+        models = []
+        for model in MODELS:
+            if "google" in model and not missing_google:
+                models.append(model)
+            elif "anthropic" in model and not missing_anthropic:
+                models.append(model)
+            
+
+        st.selectbox(
+            "🤖 Select a Model", 
+            options=models,
+            key="model",
         )
 
-    # Model Selection and Chat Controls
-    model = "google/gemini-1.5-flash-latest"  # Using a stable model
-    if "use_rag" not in st.session_state:
-        st.session_state.use_rag = False  # Default to False
+        cols0 = st.columns(2)
+        if "vector_db" not in st.session_state:
+          st.session_state.vector_db = None
+        
+        # Initialize Pinecone on startup
+        if st.session_state.vector_db is None:
+            with st.spinner("Initializing Pinecone..."):
+                st.write("Attempting to initialize Pinecone...")
+                pinecone_init_result = initialize_pinecone(
+                    pinecone_api_key,
+                    pinecone_environment,
+                    pinecone_index_name,
+                )
+                if pinecone_init_result:
+                    st.session_state.vector_db = pinecone_init_result
+                    st.success("Pinecone initialized successfully!")
+                else:
+                    st.error("Pinecone initialization failed. Check debug messages.")
+        
+        with cols0[0]:
+            is_vector_db_loaded = (st.session_state.vector_db is not None)
+            st.toggle(
+              "Use RAG", 
+              value=is_vector_db_loaded, 
+              key="use_rag", 
+              disabled=not is_vector_db_loaded,
+)
+        with cols0[1]:
+                st.button("Clear Chat", on_click=lambda: st.session_state.messages.clear(), type="primary")
+        
+        st.header("RAG Sources:")
+            
+        # File upload input for RAG with documents
+        st.file_uploader(
+            "📄 Upload a document", 
+            type=["pdf", "txt", "docx", "md"],
+            accept_multiple_files=True,
+            on_change=load_doc_to_db,
+            key="rag_docs",
+        )
 
-    st.session_state.use_rag = st.toggle(
-        "Enable RAG",
-        value=st.session_state.vector_db is not None,
-        disabled=st.session_state.vector_db is None
-    )
+        # URL input for RAG with websites
+        st.text_input(
+            "🌐 Introduce a URL", 
+            placeholder="https://example.com",
+            on_change=load_url_to_db,
+            key="rag_url",
+        )
 
-    if st.button("Clear Chat", type="primary"):
-        st.session_state.messages = [
-            HumanMessage(content="Hello"),
-            AIMessage(content="Hi there! How can I assist you today?")
-        ]
-        st.rerun()
+        with st.expander(f"📚 Documents in DB ({0 if not is_vector_db_loaded else len(st.session_state.rag_sources)})"):
+            st.write([] if not is_vector_db_loaded else [source for source in st.session_state.rag_sources])
 
-    # RAG Document Management
-    st.header("📚 Knowledge Base")
-    uploaded_files = st.file_uploader(
-        "Upload Documents",
-        type=["pdf", "txt", "docx", "md"],
-        accept_multiple_files=True,
-        key="rag_docs"
-    )
-    if uploaded_files:
-        load_doc_to_db(uploaded_files)
+    
+    
+    model_provider = st.session_state.model.split("/")[0]
+    if model_provider == "openai":
+        llm_stream = ChatOpenAI(
+            api_key=google_api_key,
+            model_name=st.session_state.model.split("/")[-1],
+            temperature=0.3,
+            streaming=True,
+        )
+    elif model_provider == "anthropic":
+        llm_stream= ChatAnthropic(
+            api_key=anthropic_api_key,
+            model=st.session_state.model.split("/")[-1],
+            temperature=0.3,
+            streaming=True,
+        )
+    elif model_provider == "google":
+        llm_stream = ChatGoogleGenerativeAI(
+            model=st.session_state.model.split("/")[-1],
+            google_api_key=google_api_key,
+            temperature=0.3,
+            streaming=True,
+            
+        )
 
-    url_input = st.text_input(
-        "Add Website URL",
-        placeholder="https://example.com",
-        key="rag_url"
-    )
-    if url_input:
-        load_url_to_db(url_input)
-
-    with st.expander(f"📂 Loaded Sources ({len(st.session_state.rag_sources)})"):
-        st.write(st.session_state.rag_sources)
-        if "documents_loaded" not in st.session_state:
-            if "session_id" in st.session_state:  # Ensure session_id is initialized
-                initialize_documents()
-                st.session_state.documents_loaded = True
-
-# Main chat interface
-if not google_api_key:
-    st.warning("⚠️ No Google API Key found. Please add it to your Streamlit secrets or enter it in the sidebar.")
-else:
-    # Initialize LLM
-    llm = ChatGoogleGenerativeAI(
-        model=model.split("/")[-1],
-        google_api_key=google_api_key,
-        temperature=0.7,
-        streaming=True
-    )
-
-    # Display chat messages
     for message in st.session_state.messages:
-        with st.chat_message(message.type):
-            st.markdown(message.content)
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-    # Chat input and response
     if prompt := st.chat_input("Your message"):
-        st.session_state.messages.append(HumanMessage(content=prompt))
+        st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            if st.session_state.use_rag and st.session_state.vector_db is not None:
-                st.write_stream(stream_llm_rag_response(llm, st.session_state.messages))
+            message_placeholder = st.empty()
+            full_response = ""
+
+            messages = [HumanMessage(content=m["content"]) if m["role"] == "user" else AIMessage(content=m["content"]) for m in st.session_state.messages]
+
+            if not st.session_state.use_rag:
+                st.write_stream(stream_llm_response(llm_stream, messages))
             else:
-                st.write_stream(stream_llm_response(llm, st.session_state.messages))
+                st.write_stream(stream_llm_rag_response(llm_stream, messages))
