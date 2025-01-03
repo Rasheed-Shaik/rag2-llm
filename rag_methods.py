@@ -5,7 +5,6 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader, UnstructuredMarkdownLoader
 from langchain.vectorstores import Pinecone as LangchainPinecone
-
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.schema import StrOutputParser
@@ -41,7 +40,7 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
         
         if pinecone_index_name not in pc.list_indexes().names():
             # Create a new index with the correct dimension
-            st.write(f"Pinecone index '{pinecone_index_name}' does not exist. Creating it...")
+            st.write(f"Pinecone index '{pinecone_index_name}' does not exist. Creating it with dimension {embedding_dimension}...")
             pc.create_index(
                 name=pinecone_index_name,
                 dimension=embedding_dimension,
