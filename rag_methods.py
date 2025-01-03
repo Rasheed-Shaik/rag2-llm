@@ -5,7 +5,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader, UnstructuredMarkdownLoader
 from langchain.vectorstores import Pinecone as LangchainPinecone
-from langchain_pinecone import PineconeVectorStore  # Import Pinecone from langchain
+from langchain_pinecone import PineconeVectorStore # Import Pinecone from langchain
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.schema import StrOutputParser
