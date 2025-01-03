@@ -64,7 +64,7 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
         st.error(f"Error initializing Pinecone: {e}")
         return None
 
-def load_doc_to_db(pinecone_index, rag_docs):
+def load_doc_to_db(pinecone_index, rag_docs, pinecone_index_name):
     """Loads documents into the Pinecone vector database."""
     if not rag_docs:
         return
@@ -106,7 +106,7 @@ def load_doc_to_db(pinecone_index, rag_docs):
             if 'tmp_file_path' in locals() and os.path.exists(tmp_file_path):
                 os.remove(tmp_file_path)
 
-def load_url_to_db(pinecone_index, rag_url):
+def load_url_to_db(pinecone_index, rag_url, pinecone_index_name):
     """Loads content from a URL into the Pinecone vector database."""
     if not rag_url:
         return
