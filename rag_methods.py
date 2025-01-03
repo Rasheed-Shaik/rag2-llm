@@ -20,8 +20,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_pinecone import Pinecone
-import pinecone
-
+from pinecone import Pinecone as PineconeClient # Import Pinecone class
 import tempfile
 
 from typing import List
@@ -122,7 +121,8 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
     try:
         # Initialize Pinecone connection
         st.write("Attempting to initialize Pinecone connection...")
-        pinecone.init(api_key=pinecone_api_key, environment=pinecone_environment)
+        # pinecone.init(api_key=pinecone_api_key, environment=pinecone_environment) # Old way
+        pinecone_client = PineconeClient(api_key=pinecone_api_key) # New way
         st.write("Pinecone connection initialized successfully.")
 
         # Initialize embedding function
@@ -137,6 +137,7 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
         vector_db = Pinecone.from_existing_index(
             index_name=pinecone_index_name,
             embedding=embedding_function,
+            client=pinecone_client # Pass the client instance
         )
         st.write(f"Pinecone index '{pinecone_index_name}' loaded successfully.")
         return vector_db
