@@ -5,7 +5,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader, UnstructuredMarkdownLoader
 from langchain.vectorstores import Pinecone as LangchainPinecone
-from langchain_pinecone import Pinecone as PineconeVectorStore
+
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.schema import StrOutputParser
@@ -122,7 +122,7 @@ def load_url_to_db(pinecone_index, rag_url):
         vector_db = LangchainPinecone.from_documents( # Use LangchainPinecone here
             documents=chunks,
             embedding=embedding_model,
-            index_name=pinecone_index.name,
+            index_name=pinecone_index_name,
         )
         
         st.session_state.rag_sources.extend([rag_url])
