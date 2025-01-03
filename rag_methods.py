@@ -39,7 +39,7 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
     """Initializes Pinecone and returns the index."""
     try:
         
-        if pinecone_index_name not in pc.list_indexes().names:
+        if pinecone_index_name not in pc.list_indexes().names():
             # Create a new index with the correct dimension
             st.write(f"Pinecone index '{pinecone_index_name}' does not exist. Creating it...")
             pc.create_index(
