@@ -151,7 +151,7 @@ else:
             key="rag_docs",
         )
         if uploaded_files:
-            load_doc_to_db(st.session_state.vector_db, uploaded_files)
+            load_doc_to_db(st.session_state.vector_db, uploaded_files, pinecone_index_name)
 
         # URL input for RAG with websites
         rag_url = st.text_input(
@@ -160,7 +160,7 @@ else:
             key="rag_url",
         )
         if rag_url:
-            load_url_to_db(st.session_state.vector_db, rag_url)
+            load_url_to_db(st.session_state.vector_db, rag_url, pinecone_index_name)
 
         with st.expander(f"📚 Documents in DB ({0 if not is_vector_db_loaded else len(st.session_state.rag_sources)})"):
             st.write([] if not is_vector_db_loaded else [source for source in st.session_state.rag_sources])
