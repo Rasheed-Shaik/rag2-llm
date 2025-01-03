@@ -17,6 +17,7 @@ from langchain.callbacks.manager import CallbackManager
 from dotenv import load_dotenv
 import streamlit as st
 from pinecone import Pinecone, ServerlessSpec
+import tempfile
 import time
 
 load_dotenv()
@@ -37,7 +38,7 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
     """Initializes Pinecone and returns the index."""
     try:
         
-        if pinecone_index_name not in pc.list_indexes().names():
+        if pinecone_index_name not in pc.list_indexes().names:
             # Create a new index with the correct dimension
             st.write(f"Pinecone index '{pinecone_index_name}' does not exist. Creating it...")
             pc.create_index(
@@ -53,7 +54,7 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
             
             # Wait for the index to be ready
              # Wait for index to be ready
-            while not pc.describe_index(index_name).status['ready']:
+            while not pc.describe_index(pinecone_index_name).status['ready']:
               time.sleep(1)
         
         index = pc.Index(pinecone_index_name)
@@ -72,29 +73,37 @@ def load_doc_to_db(pinecone_index, rag_docs):
     for doc in rag_docs:
         file_extension = doc.name.split(".")[-1].lower()
         
-        if file_extension == "pdf":
-            loader = PyPDFLoader(file_path=doc.name)
-        elif file_extension == "txt":
-            loader = TextLoader(file_path=doc.name)
-        elif file_extension == "docx":
-            loader = Docx2txtLoader(file_path=doc.name)
-        elif file_extension == "md":
-            loader = UnstructuredMarkdownLoader(file_path=doc.name)
-        else:
-            st.warning(f"Unsupported file type: {file_extension}")
-            continue
-        
-        documents = loader.load()
-        chunks = text_splitter.split_documents(documents)
-        
-        vector_db = Pinecone.from_documents(
-            documents=chunks,
-            embedding=embedding_model,
-            index_name=pinecone_index.name,
-        )
-        
-        st.session_state.rag_sources.extend([doc.name])
-        st.success(f"Document '{doc.name}' loaded to DB")
+        try:
+            with tempfile.NamedTemporaryFile(suffix=f".{file_extension}", delete=False) as tmp_file:
+                tmp_file.write(doc.read())
+                tmp_file_path = tmp_file.name
+            
+            if file_extension == "pdf":
+                loader = PyPDFLoader(file_path=tmp_file_path)
+            elif file_extension == "txt":
+                loader = TextLoader(file_path=tmp_file_path)
+            elif file_extension == "docx":
+                loader = Docx2txtLoader(file_path=tmp_file_path)
+            elif file_extension == "md":
+                loader = UnstructuredMarkdownLoader(file_path=tmp_file_path)
+            else:
+                st.warning(f"Unsupported file type: {file_extension}")
+                continue
+            
+            documents = loader.load()
+            chunks = text_splitter.split_documents(documents)
+            
+            vector_db = Pinecone.from_documents(
+                documents=chunks,
+                embedding=embedding_model,
+                index_name=pinecone_index.name,
+            )
+            
+            st.session_state.rag_sources.extend([doc.name])
+            st.success(f"Document '{doc.name}' loaded to DB")
+        finally:
+            if 'tmp_file_path' in locals() and os.path.exists(tmp_file_path):
+                os.remove(tmp_file_path)
 
 def load_url_to_db(pinecone_index, rag_url):
     """Loads content from a URL into the Pinecone vector database."""
