@@ -143,21 +143,23 @@ else:
         st.header("RAG Sources:")
             
         # File upload input for RAG with documents
-        st.file_uploader(
+        uploaded_files = st.file_uploader(
             "📄 Upload a document", 
             type=["pdf", "txt", "docx", "md"],
             accept_multiple_files=True,
-            on_change=load_doc_to_db,
             key="rag_docs",
         )
+        if uploaded_files:
+            load_doc_to_db(st.session_state.vector_db, uploaded_files)
 
         # URL input for RAG with websites
-        st.text_input(
+        rag_url = st.text_input(
             "🌐 Introduce a URL", 
             placeholder="https://example.com",
-            on_change=load_url_to_db,
             key="rag_url",
         )
+        if rag_url:
+            load_url_to_db(st.session_state.vector_db, rag_url)
 
         with st.expander(f"📚 Documents in DB ({0 if not is_vector_db_loaded else len(st.session_state.rag_sources)})"):
             st.write([] if not is_vector_db_loaded else [source for source in st.session_state.rag_sources])
