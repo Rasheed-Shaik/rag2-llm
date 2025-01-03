@@ -126,7 +126,8 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
         st.write("Pinecone connection initialized successfully.")
 
         # Initialize embedding function
-        model_name = "Alibaba-NLP/gte-large-en-v1.5"
+        # model_name = "Alibaba-NLP/gte-large-en-v1.5" # Old model
+        model_name = "sentence-transformers/all-MiniLM-L6-v2" # New model
         embedding_function = HuggingFaceEmbeddings(
             model_name=model_name,
             model_kwargs={"trust_remote_code": True}
