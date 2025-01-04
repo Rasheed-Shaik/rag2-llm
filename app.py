@@ -25,7 +25,7 @@ from rag_methods import (
 dotenv.load_dotenv()
 
 
-MODELS = ["google/gemini-2.0-flash-exp"]
+MODELS = ["google/gemini-2.0-flash-exp","think/gemini-2.0-flash-think-exp"]
 
 
 st.set_page_config(
@@ -168,11 +168,11 @@ else:
     
     
     model_provider = st.session_state.model.split("/")[0]
-    if model_provider == "openai":
-        llm_stream = ChatOpenAI(
+    if model_provider == "think":
+        llm_stream = ChatGoogleGenerativeAI(
             api_key=google_api_key,
             model_name=st.session_state.model.split("/")[-1],
-            temperature=0.3,
+            temperature=0,
             streaming=True,
         )
     elif model_provider == "anthropic":
@@ -186,7 +186,7 @@ else:
         llm_stream = ChatGoogleGenerativeAI(
             model=st.session_state.model.split("/")[-1],
             google_api_key=google_api_key,
-            temperature=0.3,
+            temperature=0,
             streaming=True,
             
         )
