@@ -197,7 +197,7 @@ if prompt := st.chat_input("Your message"):
 
     # Prepare assistant response
     with st.chat_message("assistant"):
-        message_placeholder = st.empty(key=f"response_{len(st.session_state.messages)}")
+        message_placeholder = st.empty()  # Removed the `key` argument
         full_response = ""
 
         # Convert session messages to HumanMessage/AIMessage format
