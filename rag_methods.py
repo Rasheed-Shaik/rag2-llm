@@ -36,8 +36,8 @@ region = st.secrets.get('PINECONE_REGION') or 'us-east-1'
 spec = ServerlessSpec(cloud=cloud, region=region)
 pinecone_index_name=os.environ['pinecone_index_name']
 
-
-try:
+while pinecone_index_name:
+ try:
         
         if pinecone_index_name not in pc.list_indexes().names():
             # Create a new index with the correct dimension
@@ -61,7 +61,7 @@ try:
         index = pc.Index(pinecone_index_name)
         vector_db = LangchainPinecone(index=index, embedding=embedding_model, index_name=pinecone_index_name) # Create LangchainPinecone object
         
-except Exception as e:
+ except Exception as e:
         st.error(f"Error initializing Pinecone: {e}")
         
 
