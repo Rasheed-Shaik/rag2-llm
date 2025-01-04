@@ -114,7 +114,7 @@ else:
             st.markdown(message["content"])
 
     # Handle User Input
-   if prompt := st.chat_input("Your message"):
+if prompt := st.chat_input("Your message"):
     # Append user message to session state
     st.session_state.messages.append({"role": "user", "content": prompt})
     
