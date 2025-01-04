@@ -115,7 +115,6 @@ import time  # Add this import
 def stream_llm_response(llm, messages):
     """Streams the LLM response without RAG."""
     try:
-        # Stream the response from the model
         for chunk in llm.stream(messages):
             # Debug: Log the type and content of the chunk
             print(f"Chunk type: {type(chunk)}, Chunk content: {chunk}")
@@ -133,6 +132,7 @@ def stream_llm_response(llm, messages):
                 yield str(chunk)
     except Exception as e:
         yield f"An error occurred: {str(e)}"
+
 
 def stream_llm_rag_response(llm, messages):
     if not st.session_state.vector_db:
