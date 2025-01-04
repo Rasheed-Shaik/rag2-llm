@@ -171,7 +171,7 @@ else:
     if model_provider == "think":
         llm_stream = ChatGoogleGenerativeAI(
             api_key=google_api_key,
-            model_name=st.session_state.model.split("/")[-1],
+            model=st.session_state.model.split("/")[-1],
             temperature=0,
             streaming=True,
         )
