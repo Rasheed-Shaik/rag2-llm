@@ -12,7 +12,6 @@ if os.name == 'posix':
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage,AIMessage
 from rag_methods import (
     load_doc_to_db, 
@@ -25,7 +24,7 @@ from rag_methods import (
 dotenv.load_dotenv()
 
 
-MODELS = ["google/gemini-2.0-flash-exp"]
+MODELS = ["google/gemini-2.0-flash-exp","googlethink/gemini-2.0-flash-thinking-exp"]
 
 
 st.set_page_config(
@@ -36,7 +35,7 @@ st.set_page_config(
 )
 
 # --- Header ---
-st.markdown("""<h2 style="text-align: center;">📚🔍 <i> Do your LLM even RAG bro? </i> 🤖💬</h2>""", unsafe_allow_html=True)
+st.markdown("""<h2 style="text-align: center;">📚🔍 <i> Rag based chatbot</i> 🤖💬</h2>""", unsafe_allow_html=True)
 
 # --- Initial Setup ---
 if "session_id" not in st.session_state:
@@ -88,7 +87,7 @@ with st.sidebar:
 # --- Main Content ---
 # Checking if the user has introduced the OpenAI API Key, if not, a warning is displayed
 missing_google = google_api_key == "" or google_api_key is None
-missing_anthropic = anthropic_api_key == "" or anthropic_api_key is None
+
 missing_pinecone = pinecone_api_key is None or pinecone_environment is None or pinecone_index_name == ""
 if missing_google or missing_pinecone:
     st.write("#")
@@ -101,8 +100,7 @@ else:
         for model in MODELS:
             if "google" in model and not missing_google:
                 models.append(model)
-            elif "anthropic" in model and not missing_anthropic:
-                models.append(model)
+            
             
 
         st.selectbox(
@@ -168,8 +166,8 @@ else:
     
     
     model_provider = st.session_state.model.split("/")[0]
-    if model_provider == "openai":
-        llm_stream = ChatOpenAI(
+    if model_provider == "googlethink":
+        llm_stream = ChatGoogleGenerativeAI(
             api_key=google_api_key,
             model_name=st.session_state.model.split("/")[-1],
             temperature=0.3,
