@@ -163,27 +163,21 @@ def load_url_to_db(pinecone_index, rag_url, pinecone_index_name):
 def stream_llm_response(llm, messages):
     """Streams the LLM response."""
     full_response = ""
-    final_answer = None
     for chunk in llm.stream(messages):
         if "googlethink" in str(llm):
             try:
-                # Attempt to parse the JSON-like structure
                 json_chunk = json.loads(chunk.content)
-                if "answer" in json_chunk:
-                    final_answer = json_chunk["answer"]
-                    yield final_answer
+                if isinstance(json_chunk, list) and len(json_chunk) == 2:
+                    thoughts = json_chunk[0]
+                    answer = json_chunk[1]
+                    yield answer
                     return
-                elif "thoughts" in json_chunk:
-                    full_response += json_chunk["thoughts"]
+                else:
+                    full_response += str(json_chunk)
             except json.JSONDecodeError:
                 full_response += chunk.content
         else:
             full_response += chunk.content
-        
-        if final_answer is None:
-            yield full_response
-    
-    if final_answer is None:
         yield full_response
 
 def stream_llm_rag_response(llm, messages):
@@ -223,25 +217,19 @@ def stream_llm_rag_response(llm, messages):
     
     question = messages[-1].content
     full_response = ""
-    final_answer = None
     for chunk in chain.stream(question):
         if "googlethink" in str(llm):
             try:
-                # Attempt to parse the JSON-like structure
                 json_chunk = json.loads(chunk)
-                if "answer" in json_chunk:
-                    final_answer = json_chunk["answer"]
-                    yield final_answer
+                if isinstance(json_chunk, list) and len(json_chunk) == 2:
+                    thoughts = json_chunk[0]
+                    answer = json_chunk[1]
+                    yield answer
                     return
-                elif "thoughts" in json_chunk:
-                    full_response += json_chunk["thoughts"]
+                else:
+                    full_response += str(json_chunk)
             except json.JSONDecodeError:
                 full_response += chunk
         else:
             full_response += chunk
-        
-        if final_answer is None:
-            yield full_response
-    
-    if final_answer is None:
         yield full_response
