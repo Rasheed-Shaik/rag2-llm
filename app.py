@@ -197,7 +197,7 @@ if prompt := st.chat_input("Your message"):
 
     # Prepare assistant response
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()  # Removed the `key` argument
+        message_placeholder = st.empty()
         full_response = ""
 
         # Convert session messages to HumanMessage/AIMessage format
@@ -217,7 +217,7 @@ if prompt := st.chat_input("Your message"):
             else:
                 # Stream response with RAG
                 for chunk in stream_llm_rag_response(llm_stream, messages):
-                    if chunk:  # Skip empty chunks
+                    if chunk:
                         full_response += chunk
                         message_placeholder.markdown(full_response + "▌")
         except Exception as e:

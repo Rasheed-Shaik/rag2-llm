@@ -176,8 +176,8 @@ def stream_llm_rag_response(llm, messages):
     
     template = """
     You are a helpful assistant that answers questions based on the context provided.
-    Use the following context to answer the question at the end.
-    If you don't know the answer, just say that you don't know, don't try to make up an answer.
+    if there is no context you try to answer questions to the best of your ability
+    
     
     Context:
     {context}
