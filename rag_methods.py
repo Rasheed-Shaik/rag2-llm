@@ -1,5 +1,7 @@
 import os
+import tempfile
 import json
+import time
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader, UnstructuredMarkdownLoader, WebBaseLoader
@@ -7,39 +9,74 @@ from langchain.vectorstores import Pinecone as LangchainPinecone
 from langchain.prompts import PromptTemplate
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.schema import StrOutputParser
-from pinecone import Pinecone
+from pinecone import Pinecone, ServerlessSpec
 import streamlit as st
 
 # --- Constants ---
-DATA_FOLDER = "rag_data"
-METADATA_FILE = os.path.join(DATA_FOLDER, "rag_metadata.json")
-os.makedirs(DATA_FOLDER, exist_ok=True)
+DATA_FOLDER = "rag_data"  # Folder to store metadata
+METADATA_FILE = os.path.join(DATA_FOLDER, "rag_metadata.json")  # File to store document metadata
+os.makedirs(DATA_FOLDER, exist_ok=True)  # Create the folder if it doesn't exist
 
 # --- Initialize Embedding Model ---
 embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", model_kwargs={"trust_remote_code": True})
+embedding_dimension = 384  # Dimension for the embedding model
+
+# --- Document Loaders ---
+LOADERS = {
+    "pdf": PyPDFLoader,
+    "txt": TextLoader,
+    "docx": Docx2txtLoader,
+    "md": UnstructuredMarkdownLoader,
+}
+
+# --- Helper Functions ---
+def load_metadata():
+    """Loads metadata from the metadata file."""
+    try:
+        with open(METADATA_FILE, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}  # Return an empty dictionary if the file doesn't exist or is invalid
+
+def save_metadata(metadata):
+    """Saves metadata to the metadata file."""
+    with open(METADATA_FILE, "w") as f:
+        json.dump(metadata, f)
 
 # --- Pinecone Initialization ---
 def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_name):
+    """Initializes Pinecone and returns the vector database."""
     try:
         pc = Pinecone(api_key=pinecone_api_key)
+        
+        # Create the index if it doesn't exist
         if pinecone_index_name not in pc.list_indexes().names():
+            st.info(f"Pinecone index '{pinecone_index_name}' does not exist. Creating it with dimension {embedding_dimension}...")
             pc.create_index(
                 index_name=pinecone_index_name,
-                dimension=384,
+                dimension=embedding_dimension,
                 metric="cosine",
-                spec={"cloud": "aws", "region": pinecone_environment}
+                spec=ServerlessSpec(
+                    cloud="aws",
+                    region=pinecone_environment
+                )
             )
+            st.success(f"Pinecone index '{pinecone_index_name}' creation initiated.")
+
+            # Wait for the index to be ready
             while not pc.describe_index(pinecone_index_name).status['ready']:
                 time.sleep(1)
-        
+
+        # Initialize the Pinecone index
         index = pc.Index(pinecone_index_name)
         vector_db = LangchainPinecone(index=index, embedding=embedding_model, text_key="text")
-        
-        if os.path.exists(METADATA_FILE):
-            with open(METADATA_FILE, "r") as f:
-                metadata = json.load(f)
-            st.session_state.rag_sources.extend(metadata.keys())
-        
+
+        # Load persisted documents if they exist
+        metadata = load_metadata()
+        for doc_name in metadata.keys():
+            st.session_state.rag_sources.append(doc_name)  # Add document names to session state
+            st.info(f"Loaded persisted document: {doc_name}")
+
         return vector_db
     except Exception as e:
         st.error(f"Error initializing Pinecone: {e}")
@@ -47,61 +84,69 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
 
 # --- Document and URL Loading ---
 def load_doc_to_db(pinecone_index, rag_docs, pinecone_index_name):
+    """Loads documents into the Pinecone vector database."""
     if not rag_docs:
         return
-    
+
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    metadata = json.load(open(METADATA_FILE)) if os.path.exists(METADATA_FILE) else {}
+    metadata = load_metadata()  # Load existing metadata
 
     for doc in rag_docs:
         file_extension = doc.name.split(".")[-1].lower()
-        loader = {
-            "pdf": PyPDFLoader,
-            "txt": TextLoader,
-            "docx": Docx2txtLoader,
-            "md": UnstructuredMarkdownLoader,
-        }.get(file_extension)
+        loader_class = LOADERS.get(file_extension)
 
-        if not loader:
+        if not loader_class:
             st.warning(f"Unsupported file type: {file_extension}")
             continue
 
+        # Save the uploaded file to a temporary location
+        with tempfile.NamedTemporaryFile(suffix=f".{file_extension}", delete=False) as tmp_file:
+            tmp_file.write(doc.read())
+            tmp_file_path = tmp_file.name
+
         try:
-            # Load the document directly from the uploaded file
-            documents = loader(doc).load()
+            # Load and process the document
+            loader = loader_class(file_path=tmp_file_path)
+            documents = loader.load()
             chunks = text_splitter.split_documents(documents)
-            vector_ids = pinecone_index.add_documents(chunks)
-            
+            vector_ids = pinecone_index.add_documents(documents=chunks)
+
+            # Update metadata and session state
             st.session_state.rag_sources.append(doc.name)
             metadata[doc.name] = vector_ids
             st.success(f"Document '{doc.name}' loaded to DB")
         except Exception as e:
             st.error(f"Error loading document '{doc.name}': {e}")
-    
-    with open(METADATA_FILE, "w") as f:
-        json.dump(metadata, f)
+        finally:
+            # Clean up the temporary file
+            if os.path.exists(tmp_file_path):
+                os.remove(tmp_file_path)
+
+    save_metadata(metadata)  # Save updated metadata
 
 def load_url_to_db(pinecone_index, rag_url, pinecone_index_name):
+    """Loads content from a URL into the Pinecone vector database."""
     if not rag_url:
         return
-    
+
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    metadata = json.load(open(METADATA_FILE)) if os.path.exists(METADATA_FILE) else {}
+    metadata = load_metadata()  # Load existing metadata
 
     try:
-        # Load the document from the URL
-        documents = WebBaseLoader(rag_url).load()
+        # Load and process the URL content
+        loader = WebBaseLoader(rag_url)
+        documents = loader.load()
         chunks = text_splitter.split_documents(documents)
-        vector_ids = pinecone_index.add_documents(chunks)
-        
+        vector_ids = pinecone_index.add_documents(documents=chunks)
+
+        # Update metadata and session state
         st.session_state.rag_sources.append(rag_url)
         metadata[rag_url] = vector_ids
         st.success(f"URL '{rag_url}' loaded to DB")
     except Exception as e:
         st.error(f"Error loading URL: {e}")
-    
-    with open(METADATA_FILE, "w") as f:
-        json.dump(metadata, f)
+
+    save_metadata(metadata)  # Save updated metadata
 
 # --- LLM Response Streaming ---
 def stream_llm_response(llm, messages):
