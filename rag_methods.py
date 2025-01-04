@@ -127,18 +127,9 @@ def stream_llm_response(llm, messages):
         else:
             parts = [str(response)]  # Fallback: convert the response to a string
 
-        # Concatenate all parts into a single response
-        full_response = " ".join(str(part) for part in parts)
-        yield full_response
-    except Exception as e:
-        yield f"An error occurred: {str(e)}"
-
-        # Split the response into thoughts and answer
-        if "Answer:" in full_response:
-            thoughts, answer = full_response.split("Answer:", 1)
-            yield f"Thoughts: {thoughts.strip()}\nAnswer: {answer.strip()}"
-        else:
-            yield full_response  # If no delimiter is found, yield the full response
+        # Yield each part as a separate chunk
+        for part in parts:
+            yield str(part)  # Ensure the part is a string
     except Exception as e:
         yield f"An error occurred: {str(e)}"
 
