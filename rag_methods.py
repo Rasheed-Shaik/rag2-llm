@@ -139,7 +139,7 @@ def stream_llm_response(llm, messages):
                 if isinstance(chunk['content'], list):
                     # If the content is a list, join it into a single string with a dash separator
                     #separator = "\n- "  # Dash separator
-                    list_content = separator.join(str(item) for item in chunk['content'])
+                    list_content = " ".join(str(item) for item in chunk['content'])
                     st.write("Yielding list chunk as string:", list_content)  # Debug
                     yield list_content
                 else:
@@ -148,7 +148,7 @@ def stream_llm_response(llm, messages):
             elif isinstance(chunk, list):
                 # If the chunk is a list, convert it to a string with a dash separator
                 #separator = "\n- "  # Dash separator
-                list_content = separator.join(str(item) for item in chunk)
+                list_content = " ".join(str(item) for item in chunk)
                 st.write("Yielding list chunk as string:", list_content)  # Debug
                 yield list_content
             else:
