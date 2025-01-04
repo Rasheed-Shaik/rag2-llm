@@ -110,24 +110,38 @@ def load_url_to_db(pinecone_index, rag_url, pinecone_index_name):
 # --- LLM Response Streaming ---
 import time  # Add this import
 
+import time  # Add this import
+
 def stream_llm_response(llm, messages):
     """Streams the LLM response without RAG."""
     try:
+        buffer = ""  # Buffer to temporarily store chunks
         for chunk in llm.stream(messages):
             # Debug: Log the type and content of the chunk
             print(f"Chunk type: {type(chunk)}, Chunk content: {chunk}")
 
             # Ensure the chunk is a string
             if isinstance(chunk, str):
-                yield chunk  # Yield the string directly
+                buffer += chunk  # Add the chunk to the buffer
             elif hasattr(chunk, 'content'):
-                yield chunk.content  # Yield the content attribute
+                buffer += chunk.content  # Add the content to the buffer
             elif isinstance(chunk, list):
                 # If the chunk is a list, convert it to a string
-                yield " ".join(str(item) for item in chunk)
+                buffer += " ".join(str(item) for item in chunk)
             else:
                 # Convert other types to string
-                yield str(chunk)
+                buffer += str(chunk)
+
+            # Yield the buffer if it contains a complete thought or answer
+            if "\n" in buffer or "." in buffer or "?" in buffer:
+                yield buffer
+                buffer = ""  # Clear the buffer
+
+            time.sleep(0.1)  # Small delay to ensure all chunks are processed
+
+        # Yield any remaining content in the buffer
+        if buffer:
+            yield buffer
     except Exception as e:
         yield f"An error occurred: {str(e)}"
 
