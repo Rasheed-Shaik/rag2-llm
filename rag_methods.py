@@ -161,9 +161,17 @@ def load_url_to_db(pinecone_index, rag_url, pinecone_index_name):
         json.dump(metadata, f)
 
 def stream_llm_response(llm, messages):
-    """Streams the LLM response."""
-    for chunk in llm.stream(messages):
-        yield chunk.content
+    """Streams the LLM response without RAG."""
+    try:
+        # Stream the response from the LLM
+        for chunk in llm.stream(messages):
+            if isinstance(chunk, str):  # Ensure the chunk is a string
+                yield chunk
+            else:
+                # If the chunk is not a string, convert it to a string
+                yield str(chunk)
+    except Exception as e:
+        yield f"An error occurred: {str(e)}"
 
 def stream_llm_rag_response(llm, messages):
     """Streams the LLM response with RAG."""

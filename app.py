@@ -211,13 +211,13 @@ if prompt := st.chat_input("Your message"):
             if not st.session_state.use_rag:
                 # Stream response without RAG
                 for chunk in stream_llm_response(llm_stream, messages):
-                    if chunk:  # Skip empty chunks
+                    if isinstance(chunk, str):  # Ensure the chunk is a string
                         full_response += chunk
                         message_placeholder.markdown(full_response + "▌")
             else:
                 # Stream response with RAG
                 for chunk in stream_llm_rag_response(llm_stream, messages):
-                    if chunk:
+                    if isinstance(chunk, str):  # Ensure the chunk is a string
                         full_response += chunk
                         message_placeholder.markdown(full_response + "▌")
         except Exception as e:
