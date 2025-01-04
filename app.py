@@ -114,33 +114,46 @@ else:
             st.markdown(message["content"])
 
     # Handle User Input
-    if prompt := st.chat_input("Your message"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+   if prompt := st.chat_input("Your message"):
+    # Append user message to session state
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    # Display user message
+    with st.chat_message("user"):
+        st.markdown(prompt)
 
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            full_response = ""
+    # Prepare assistant response
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        full_response = ""
 
-            messages = [
-                HumanMessage(content=m["content"]) if m["role"] == "user" 
-                else AIMessage(content=m["content"]) 
-                for m in st.session_state.messages
-            ]
+        # Convert session messages to HumanMessage/AIMessage format
+        messages = [
+            HumanMessage(content=m["content"]) if m["role"] == "user" 
+            else AIMessage(content=m["content"]) 
+            for m in st.session_state.messages
+        ]
 
-            try:
-                if not use_rag:
-                    for chunk in stream_llm_response(llm_stream, messages):
+        try:
+            if not st.session_state.use_rag:
+                # Stream response without RAG
+                for chunk in stream_llm_response(llm_stream, messages):
+                    if isinstance(chunk, str):  # Ensure the chunk is a string
                         full_response += chunk
                         message_placeholder.markdown(full_response + "▌")
-                else:
-                    for chunk in stream_llm_rag_response(llm_stream, messages):
+            else:
+                # Stream response with RAG
+                for chunk in stream_llm_rag_response(llm_stream, messages):
+                    if isinstance(chunk, str):  # Ensure the chunk is a string
                         full_response += chunk
                         message_placeholder.markdown(full_response + "▌")
-            except Exception as e:
-                full_response = f"An error occurred: {str(e)}"
-                message_placeholder.markdown(full_response)
-
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
+        except Exception as e:
+            # Handle errors during streaming
+            full_response = f"An error occurred: {str(e)}"
             message_placeholder.markdown(full_response)
+
+        # Append assistant's response to session state
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        
+        # Display final response
+        message_placeholder.markdown(full_response)
