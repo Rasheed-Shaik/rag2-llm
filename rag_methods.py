@@ -127,7 +127,7 @@ def stream_llm_response(llm, messages):
                 # Handle cases where the chunk has a 'content' attribute
                 if isinstance(chunk.content, list):
                     # If the content is a list, join it into a single string with a dash separator
-                    #separator = "\n- "  # Dash separator
+                    separator = "\n- "  # Dash separator
                     list_content = separator.join(str(item) for item in chunk.content)
                     st.write("Yielding list chunk as string:", list_content)  # Debug
                     yield list_content
