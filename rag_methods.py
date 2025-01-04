@@ -44,7 +44,7 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
             # Create a new index with the correct dimension
             st.write(f"Pinecone index '{pinecone_index_name}' does not exist. Creating it with dimension {embedding_dimension}...")
             pc.create_index(
-                name=pinecone_index_name,
+                index_name=pinecone_index_name,
                 dimension=embedding_dimension,
                 metric="cosine",
                 spec=ServerlessSpec(
