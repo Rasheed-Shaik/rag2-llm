@@ -164,7 +164,6 @@ def stream_llm_response(llm, messages):
     """Streams the LLM response."""
     full_response = ""
     final_answer = None
-    thoughts = []
     processed_chunks = set()
 
     for chunk in llm.stream(messages):
@@ -197,20 +196,24 @@ def stream_llm_response(llm, messages):
                     yield final_answer
                     return
                 else:
-                    thoughts.append(str(json_chunk))
+                    if isinstance(json_chunk, dict) and json_chunk.get("role") == "model" and isinstance(json_chunk.get("parts"), list) and len(json_chunk.get("parts")) > 0:
+                        parts = json_chunk.get("parts")
+                        if len(parts) > 0:
+                            final_answer = parts[-1]
+                            yield final_answer
+                            return
+                    else:
+                        full_response += str(json_chunk)
             except json.JSONDecodeError:
-                thoughts.append(chunk.content)
+                full_response += chunk.content
         else:
             full_response += chunk.content
         
-        if "googlethink" in str(llm):
-            if final_answer is None:
-                yield " ".join(thoughts)
-        else:
+        if "googlethink" not in str(llm"):
             yield full_response
     
     if "googlethink" in str(llm) and final_answer is None:
-        yield " ".join(thoughts)
+        yield full_response
     elif "googlethink" not in str(llm):
         yield full_response
 
@@ -251,7 +254,6 @@ def stream_llm_rag_response(llm, messages):
     
     question = messages[-1].content
     full_response = ""
-    thoughts = []
     final_answer = None
     processed_chunks = set()
 
@@ -285,19 +287,23 @@ def stream_llm_rag_response(llm, messages):
                     yield final_answer
                     return
                 else:
-                    thoughts.append(str(json_chunk))
+                    if isinstance(json_chunk, dict) and json_chunk.get("role") == "model" and isinstance(json_chunk.get("parts"), list) and len(json_chunk.get("parts")) > 0:
+                        parts = json_chunk.get("parts")
+                        if len(parts) > 0:
+                            final_answer = parts[-1]
+                            yield final_answer
+                            return
+                    else:
+                        full_response += str(json_chunk)
             except json.JSONDecodeError:
-                thoughts.append(chunk)
+                full_response += chunk
         else:
             full_response += chunk
         
-        if "googlethink" in str(llm):
-            if final_answer is None:
-                yield " ".join(thoughts)
-        else:
+        if "googlethink" not in str(llm):
             yield full_response
     
     if "googlethink" in str(llm) and final_answer is None:
-        yield " ".join(thoughts)
+        yield full_response
     elif "googlethink" not in str(llm):
         yield full_response
