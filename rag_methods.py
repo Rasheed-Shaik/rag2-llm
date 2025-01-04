@@ -186,6 +186,7 @@ def stream_llm_response(llm, messages):
         yield f"An error occurred: {str(e)}"
 
 def stream_llm_rag_response(llm, messages):
+    """Streams the LLM response with RAG."""
     if not st.session_state.vector_db:
         yield "No vector database initialized."
         return
