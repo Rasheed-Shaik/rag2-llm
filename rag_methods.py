@@ -165,16 +165,16 @@ def stream_llm_response(llm, messages):
     try:
         # Stream the response from the LLM
         for chunk in llm.stream(messages):
-            if isinstance(chunk, str):  # Ensure the chunk is a string
-                yield chunk
+            if hasattr(chunk, 'content'):  # Check if the chunk has a 'content' attribute
+                yield chunk.content  # Yield only the content
             else:
-                # If the chunk is not a string, convert it to a string
-                yield str(chunk)
+                yield str(chunk)  # Fallback: convert the chunk to a string
     except Exception as e:
         yield f"An error occurred: {str(e)}"
 
+
 def stream_llm_rag_response(llm, messages):
-    """Streams the LLM response with RAG."""
+    """Streams the LLM response with RAG, including reasoning and final answer."""
     
     if not st.session_state.vector_db:
         yield "No vector database initialized."
@@ -182,24 +182,24 @@ def stream_llm_rag_response(llm, messages):
     
     retriever = st.session_state.vector_db.as_retriever()
     
+    # Updated prompt template to include reasoning
     template = """
-    You are a helpful assistant that answers questions based on the context provided.
-    if there is no context you try to answer questions to the best of your ability
-    
+    You are a helpful assistant that explains your reasoning before providing a final answer.
+    If the question requires context, use the following context to answer the question:
     
     Context:
     {context}
     
     Question: {question}
     
-    Answer:
+    Reasoning and Answer:
     """
     
     prompt = PromptTemplate.from_template(template)
     
     def format_docs(docs):
-        prompt_template = PromptTemplate.from_template("{page_content}") # Create a simple prompt template
-        return "\n\n".join(format_document(doc, prompt=prompt_template) for doc in docs) # Pass the prompt
+        prompt_template = PromptTemplate.from_template("{page_content}")
+        return "\n\n".join(format_document(doc, prompt=prompt_template) for doc in docs)
     
     chain = (
         {"context": retriever | format_docs, "question": RunnablePassthrough()}
@@ -212,4 +212,7 @@ def stream_llm_rag_response(llm, messages):
     
     # Stream the response and yield each chunk
     for chunk in chain.stream(question):
-        yield chunk
+        if hasattr(chunk, 'content'):  # Check if the chunk has a 'content' attribute
+            yield chunk.content  # Yield only the content
+        else:
+            yield str(chunk)  # Fallback: convert the chunk to a string
