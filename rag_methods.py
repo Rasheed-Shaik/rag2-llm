@@ -1,126 +1,82 @@
 import os
-import time
-import pinecone
+import tempfile
+import json
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader, UnstructuredMarkdownLoader
+from langchain.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader, UnstructuredMarkdownLoader, WebBaseLoader
 from langchain.vectorstores import Pinecone as LangchainPinecone
-from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from langchain.schema import StrOutputParser
 from langchain.schema.runnable import RunnablePassthrough
-from langchain.schema import format_document
-from langchain.schema import HumanMessage, AIMessage
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-from langchain.callbacks.base import BaseCallbackHandler
-from langchain.callbacks.manager import CallbackManager
-from dotenv import load_dotenv
+from langchain.schema import StrOutputParser
+from pinecone import Pinecone
 import streamlit as st
-from pinecone import Pinecone, ServerlessSpec
-import tempfile
-import time
-import json
-import shutil
 
-load_dotenv()
-
-# Initialize embedding model
-embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
-embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name, model_kwargs={"trust_remote_code": True})
-embedding_dimension = 384 # Dimension for all-MiniLM-L6-v2
-
-# Initialize Pinecone client
-pinecone_api_key = st.secrets.get("PINECONE_API_KEY")
-
-pc = Pinecone(api_key=st.secrets.get("PINECONE_API_KEY"))
-cloud = st.secrets.get('PINECONE_CLOUD') or 'aws'
-region = st.secrets.get('PINECONE_REGION') or 'us-east-1'
-spec = ServerlessSpec(cloud=cloud, region=region)
-
+# --- Constants ---
 DATA_FOLDER = "rag_data"
 METADATA_FILE = os.path.join(DATA_FOLDER, "rag_metadata.json")
-
-# Create the data folder if it doesn't exist
 os.makedirs(DATA_FOLDER, exist_ok=True)
 
+# --- Initialize Embedding Model ---
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", model_kwargs={"trust_remote_code": True})
+
+# --- Pinecone Initialization ---
 def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_name):
-    """Initializes Pinecone and returns the index."""
     try:
-        
+        pc = Pinecone(api_key=pinecone_api_key)
         if pinecone_index_name not in pc.list_indexes().names():
-            # Create a new index with the correct dimension
-            st.write(f"Pinecone index '{pinecone_index_name}' does not exist. Creating it with dimension {embedding_dimension}...")
             pc.create_index(
                 index_name=pinecone_index_name,
-                dimension=embedding_dimension,
+                dimension=384,
                 metric="cosine",
-                spec=ServerlessSpec(
-                    cloud="aws",
-                    region=pinecone_environment
-                )
+                spec={"cloud": "aws", "region": pinecone_environment}
             )
-            st.write(f"Pinecone index '{pinecone_index_name}' creation initiated.")
-            
-            # Wait for the index to be ready
-             # Wait for index to be ready
             while not pc.describe_index(pinecone_index_name).status['ready']:
-              time.sleep(1)
+                time.sleep(1)
         
         index = pc.Index(pinecone_index_name)
-        vector_db = LangchainPinecone(index=index, embedding=embedding_model, text_key="text") # Create LangchainPinecone object with text_key
+        vector_db = LangchainPinecone(index=index, embedding=embedding_model, text_key="text")
         
-        # Load persisted documents if they exist
         if os.path.exists(METADATA_FILE):
             with open(METADATA_FILE, "r") as f:
                 metadata = json.load(f)
-            for doc_name, vector_ids in metadata.items():
-                st.write(f"Loading persisted document: {doc_name}")
-                st.session_state.rag_sources.extend([doc_name])
+            st.session_state.rag_sources.extend(metadata.keys())
         
         return vector_db
     except Exception as e:
         st.error(f"Error initializing Pinecone: {e}")
         return None
 
+# --- Document and URL Loading ---
 def load_doc_to_db(pinecone_index, rag_docs, pinecone_index_name):
-    """Loads documents into the Pinecone vector database."""
     if not rag_docs:
         return
     
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    
-    if not os.path.exists(METADATA_FILE):
-        metadata = {}
-    else:
-        with open(METADATA_FILE, "r") as f:
-            metadata = json.load(f)
-    
+    metadata = json.load(open(METADATA_FILE)) if os.path.exists(METADATA_FILE) else {}
+
     for doc in rag_docs:
         file_extension = doc.name.split(".")[-1].lower()
-        
         try:
             with tempfile.NamedTemporaryFile(suffix=f".{file_extension}", delete=False) as tmp_file:
                 tmp_file.write(doc.read())
                 tmp_file_path = tmp_file.name
-            
-            if file_extension == "pdf":
-                loader = PyPDFLoader(file_path=tmp_file_path)
-            elif file_extension == "txt":
-                loader = TextLoader(file_path=tmp_file_path)
-            elif file_extension == "docx":
-                loader = Docx2txtLoader(file_path=tmp_file_path)
-            elif file_extension == "md":
-                loader = UnstructuredMarkdownLoader(file_path=tmp_file_path)
-            else:
+
+            loader = {
+                "pdf": PyPDFLoader,
+                "txt": TextLoader,
+                "docx": Docx2txtLoader,
+                "md": UnstructuredMarkdownLoader,
+            }.get(file_extension)
+
+            if not loader:
                 st.warning(f"Unsupported file type: {file_extension}")
                 continue
-            
-            documents = loader.load()
+
+            documents = loader(tmp_file_path).load()
             chunks = text_splitter.split_documents(documents)
+            vector_ids = pinecone_index.add_documents(chunks)
             
-            vector_ids = pinecone_index.add_documents(documents=chunks) # Use the LangchainPinecone object to add documents
-            
-            st.session_state.rag_sources.extend([doc.name])
+            st.session_state.rag_sources.append(doc.name)
             metadata[doc.name] = vector_ids
             st.success(f"Document '{doc.name}' loaded to DB")
         finally:
@@ -131,27 +87,18 @@ def load_doc_to_db(pinecone_index, rag_docs, pinecone_index_name):
         json.dump(metadata, f)
 
 def load_url_to_db(pinecone_index, rag_url, pinecone_index_name):
-    """Loads content from a URL into the Pinecone vector database."""
     if not rag_url:
         return
     
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    
-    if not os.path.exists(METADATA_FILE):
-        metadata = {}
-    else:
-        with open(METADATA_FILE, "r") as f:
-            metadata = json.load(f)
-    
+    metadata = json.load(open(METADATA_FILE)) if os.path.exists(METADATA_FILE) else {}
+
     try:
-        from langchain.document_loaders import WebBaseLoader
-        loader = WebBaseLoader(rag_url)
-        documents = loader.load()
+        documents = WebBaseLoader(rag_url).load()
         chunks = text_splitter.split_documents(documents)
+        vector_ids = pinecone_index.add_documents(chunks)
         
-        vector_ids = pinecone_index.add_documents(documents=chunks) # Use the LangchainPinecone object to add documents
-        
-        st.session_state.rag_sources.extend([rag_url])
+        st.session_state.rag_sources.append(rag_url)
         metadata[rag_url] = vector_ids
         st.success(f"URL '{rag_url}' loaded to DB")
     except Exception as e:
@@ -160,59 +107,38 @@ def load_url_to_db(pinecone_index, rag_url, pinecone_index_name):
     with open(METADATA_FILE, "w") as f:
         json.dump(metadata, f)
 
+# --- LLM Response Streaming ---
 def stream_llm_response(llm, messages):
-    """Streams the LLM response without RAG."""
     try:
-        # Stream the response from the LLM
         for chunk in llm.stream(messages):
-            if hasattr(chunk, 'content'):  # Check if the chunk has a 'content' attribute
-                yield chunk.content  # Yield only the content
-            else:
-                yield str(chunk)  # Fallback: convert the chunk to a string
+            yield chunk.content if hasattr(chunk, 'content') else str(chunk)
     except Exception as e:
         yield f"An error occurred: {str(e)}"
 
-
 def stream_llm_rag_response(llm, messages):
-    """Streams the LLM response with RAG, including reasoning and final answer."""
-    
     if not st.session_state.vector_db:
         yield "No vector database initialized."
         return
     
     retriever = st.session_state.vector_db.as_retriever()
-    
-    # Updated prompt template to include reasoning
-    template = """
-    You are a helpful assistant that explains your reasoning before providing a final answer.
-    If the question requires context, use the following context to answer the question:
-    
-    Context:
-    {context}
-    
-    Question: {question}
-    
-    Reasoning and Answer:
-    """
-    
-    prompt = PromptTemplate.from_template(template)
-    
-    def format_docs(docs):
-        prompt_template = PromptTemplate.from_template("{page_content}")
-        return "\n\n".join(format_document(doc, prompt=prompt_template) for doc in docs)
+    prompt = PromptTemplate.from_template("""
+        You are a helpful assistant that explains your reasoning before providing a final answer.
+        If the question requires context, use the following context to answer the question:
+        
+        Context:
+        {context}
+        
+        Question: {question}
+        
+        Reasoning and Answer:
+    """)
     
     chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()}
+        {"context": retriever | (lambda docs: "\n\n".join(doc.page_content for doc in docs)), "question": RunnablePassthrough()}
         | prompt
         | llm
         | StrOutputParser()
     )
     
-    question = messages[-1].content
-    
-    # Stream the response and yield each chunk
-    for chunk in chain.stream(question):
-        if hasattr(chunk, 'content'):  # Check if the chunk has a 'content' attribute
-            yield chunk.content  # Yield only the content
-        else:
-            yield str(chunk)  # Fallback: convert the chunk to a string
+    for chunk in chain.stream(messages[-1].content):
+        yield chunk.content if hasattr(chunk, 'content') else str(chunk)
