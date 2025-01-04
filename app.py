@@ -101,7 +101,7 @@ else:
         for model in MODELS:
             if "google" in model and not missing_google:
                 models.append(model)
-            elif "anthropic" in model and not missing_anthropic:
+            elif "think" in model and not missing_anthropic:
                 models.append(model)
             
 
