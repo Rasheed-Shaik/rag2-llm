@@ -1,7 +1,7 @@
 import os
 import time
 import pinecone
-from langchain_community.embeddings import HuggingFaceEmbeddings # Import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader, UnstructuredMarkdownLoader
 from langchain.vectorstores import Pinecone as LangchainPinecone
@@ -59,7 +59,8 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
               time.sleep(1)
         
         index = pc.Index(pinecone_index_name)
-        return index
+        vector_db = LangchainPinecone(index=index, embedding=embedding_model, index_name=pinecone_index_name) # Create LangchainPinecone object
+        return vector_db
     except Exception as e:
         st.error(f"Error initializing Pinecone: {e}")
         return None
@@ -94,11 +95,7 @@ def load_doc_to_db(pinecone_index, rag_docs, pinecone_index_name):
             documents = loader.load()
             chunks = text_splitter.split_documents(documents)
             
-            vector_db = LangchainPinecone.from_documents( # Use LangchainPinecone here
-                documents=chunks,
-                embedding=embedding_model,
-                index_name=pinecone_index_name,
-            )
+            pinecone_index.add_documents(documents=chunks) # Use the LangchainPinecone object to add documents
             
             st.session_state.rag_sources.extend([doc.name])
             st.success(f"Document '{doc.name}' loaded to DB")
@@ -119,11 +116,7 @@ def load_url_to_db(pinecone_index, rag_url, pinecone_index_name):
         documents = loader.load()
         chunks = text_splitter.split_documents(documents)
         
-        vector_db = LangchainPinecone.from_documents( # Use LangchainPinecone here
-            documents=chunks,
-            embedding=embedding_model,
-            index_name=pinecone_index_name,
-        )
+        pinecone_index.add_documents(documents=chunks) # Use the LangchainPinecone object to add documents
         
         st.session_state.rag_sources.extend([rag_url])
         st.success(f"URL '{rag_url}' loaded to DB")
