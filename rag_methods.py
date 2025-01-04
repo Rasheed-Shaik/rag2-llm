@@ -60,7 +60,7 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
               time.sleep(1)
         
         index = pc.Index(pinecone_index_name)
-        vector_db = LangchainPinecone(index_name=pinecone_index_name, embedding=embedding_model) # Create LangchainPinecone object
+        vector_db = LangchainPinecone(index=index, embedding=embedding_model) # Create LangchainPinecone object
         return vector_db
     except Exception as e:
         st.error(f"Error initializing Pinecone: {e}")
