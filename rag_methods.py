@@ -127,7 +127,7 @@ def stream_llm_response(llm, messages):
                 # Handle cases where the chunk has a 'content' attribute
                 if isinstance(chunk.content, list):
                     # If the content is a list, join it into a single string with a separator
-                    separator = "\n---\n"  # Custom separator
+                    separator = "\n"  # Simple newline separator
                     list_content = separator.join(str(item) for item in chunk.content)
                     st.write("Yielding list chunk as string:", list_content)  # Debug
                     yield list_content
@@ -138,7 +138,7 @@ def stream_llm_response(llm, messages):
                 # Handle cases where the chunk is a dictionary with a 'content' key
                 if isinstance(chunk['content'], list):
                     # If the content is a list, join it into a single string with a separator
-                    separator = "\n---\n"  # Custom separator
+                    separator = "\n"  # Simple newline separator
                     list_content = separator.join(str(item) for item in chunk['content'])
                     st.write("Yielding list chunk as string:", list_content)  # Debug
                     yield list_content
@@ -147,7 +147,7 @@ def stream_llm_response(llm, messages):
                     yield chunk['content']  # Yield the content from a dictionary
             elif isinstance(chunk, list):
                 # If the chunk is a list, convert it to a string with a separator
-                separator = "\n---\n"  # Custom separator
+                separator = "\n"  # Simple newline separator
                 list_content = separator.join(str(item) for item in chunk)
                 st.write("Yielding list chunk as string:", list_content)  # Debug
                 yield list_content
