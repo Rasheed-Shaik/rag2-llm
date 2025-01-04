@@ -205,6 +205,12 @@ else:
             messages = [HumanMessage(content=m["content"]) if m["role"] == "user" else AIMessage(content=m["content"]) for m in st.session_state.messages]
 
             if not st.session_state.use_rag:
-                st.write_stream(stream_llm_response(llm_stream, messages))
+                for chunk in stream_llm_response(llm_stream, messages):
+                    full_response += chunk
+                    message_placeholder.markdown(full_response)
             else:
-                st.write_stream(stream_llm_rag_response(llm_stream, messages))
+                for chunk in stream_llm_rag_response(llm_stream, messages):
+                    full_response += chunk
+                    message_placeholder.markdown(full_response)
+            
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
