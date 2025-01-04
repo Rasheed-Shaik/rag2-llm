@@ -21,6 +21,7 @@ import tempfile
 import time
 import json
 import shutil
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
@@ -164,7 +165,19 @@ def stream_llm_response(llm, messages):
     """Streams the LLM response."""
     full_response = ""
     processed_chunks = set()
-
+    
+    simple_questions = ["who are you", "what is 1+1", "what is your name"]
+    if any(q.lower() in messages[-1].content.lower() for q in simple_questions):
+        simple_llm = ChatGoogleGenerativeAI(
+            model="gemini-pro",
+            google_api_key=st.secrets.get("google_api_key"),
+            temperature=0.3,
+            streaming=True
+        )
+        for chunk in simple_llm.stream(messages):
+            yield chunk.content
+        return
+    
     for chunk in llm.stream(messages):
         if "googlethink" in str(llm):
             if chunk.content in processed_chunks:
@@ -224,6 +237,18 @@ def stream_llm_rag_response(llm, messages):
     question = messages[-1].content
     full_response = ""
     processed_chunks = set()
+    
+    simple_questions = ["who are you", "what is 1+1", "what is your name"]
+    if any(q.lower() in messages[-1].content.lower() for q in simple_questions):
+        simple_llm = ChatGoogleGenerativeAI(
+            model="gemini-pro",
+            google_api_key=st.secrets.get("google_api_key"),
+            temperature=0.3,
+            streaming=True
+        )
+        for chunk in simple_llm.stream(messages):
+            yield chunk.content
+        return
 
     for chunk in chain.stream(question):
         if "googlethink" in str(llm):
