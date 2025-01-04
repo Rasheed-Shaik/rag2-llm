@@ -125,12 +125,24 @@ def stream_llm_response(llm, messages):
                 yield chunk  # Yield the string directly
             elif hasattr(chunk, 'content'):
                 # Handle cases where the chunk has a 'content' attribute
-                st.write("Yielding chunk with 'content' attribute:", chunk.content)  # Debug
-                yield chunk.content  # Yield the content attribute
+                if isinstance(chunk.content, list):
+                    # If the content is a list, yield each item separately (no separator)
+                    for item in chunk.content:
+                        st.write("Yielding list item from 'content':", item)  # Debug
+                        yield str(item)
+                else:
+                    st.write("Yielding chunk with 'content' attribute:", chunk.content)  # Debug
+                    yield chunk.content  # Yield the content attribute
             elif isinstance(chunk, dict) and 'content' in chunk:
                 # Handle cases where the chunk is a dictionary with a 'content' key
-                st.write("Yielding chunk from dictionary:", chunk['content'])  # Debug
-                yield chunk['content']  # Yield the content from a dictionary
+                if isinstance(chunk['content'], list):
+                    # If the content is a list, yield each item separately (no separator)
+                    for item in chunk['content']:
+                        st.write("Yielding list item from dictionary 'content':", item)  # Debug
+                        yield str(item)
+                else:
+                    st.write("Yielding chunk from dictionary:", chunk['content'])  # Debug
+                    yield chunk['content']  # Yield the content from a dictionary
             elif isinstance(chunk, list):
                 # Apply separator ONLY to the chunk itself when it's a list
                 separator = "\n- "  # Dash separator
