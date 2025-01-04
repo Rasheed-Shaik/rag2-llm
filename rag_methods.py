@@ -178,7 +178,7 @@ def stream_llm_response(llm, messages):
         try:
             sentences = full_response.split(".")
             if sentences:
-                yield sentences[-1].strip()
+                yield " ".join(sentences[:-1]).strip() + "\n\n" + sentences[-1].strip()
             else:
                 yield full_response
         except:
@@ -238,7 +238,7 @@ def stream_llm_rag_response(llm, messages):
         try:
             sentences = full_response.split(".")
             if sentences:
-                yield sentences[-1].strip()
+                yield " ".join(sentences[:-1]).strip() + "\n\n" + sentences[-1].strip()
             else:
                 yield full_response
         except:
