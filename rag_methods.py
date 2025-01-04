@@ -163,21 +163,55 @@ def load_url_to_db(pinecone_index, rag_url, pinecone_index_name):
 def stream_llm_response(llm, messages):
     """Streams the LLM response."""
     full_response = ""
+    final_answer = None
+    thoughts = []
+    processed_chunks = set()
+
     for chunk in llm.stream(messages):
         if "googlethink" in str(llm):
+            if chunk.content in processed_chunks:
+                continue
+            processed_chunks.add(chunk.content)
             try:
                 json_chunk = json.loads(chunk.content)
-                if isinstance(json_chunk, dict) and json_chunk.get("role") == "model" and isinstance(json_chunk.get("parts"), list) and len(json_chunk.get("parts")) == 2:
-                    thoughts = json_chunk["parts"][0]
-                    answer = json_chunk["parts"][1]
-                    yield answer
+                
+                def extract_answer(data):
+                    if isinstance(data, dict):
+                        for key, value in data.items():
+                            if key.lower() == "answer":
+                                return value
+                            elif isinstance(value, (dict, list)):
+                                result = extract_answer(value)
+                                if result:
+                                    return result
+                    elif isinstance(data, list):
+                        for item in data:
+                            result = extract_answer(item)
+                            if result:
+                                return result
+                    return None
+                
+                answer = extract_answer(json_chunk)
+                if answer:
+                    final_answer = answer
+                    yield final_answer
                     return
                 else:
-                    full_response += str(json_chunk)
+                    thoughts.append(str(json_chunk))
             except json.JSONDecodeError:
-                full_response += chunk.content
+                thoughts.append(chunk.content)
         else:
             full_response += chunk.content
+        
+        if "googlethink" in str(llm):
+            if final_answer is None:
+                yield " ".join(thoughts)
+        else:
+            yield full_response
+    
+    if "googlethink" in str(llm) and final_answer is None:
+        yield " ".join(thoughts)
+    elif "googlethink" not in str(llm):
         yield full_response
 
 def stream_llm_rag_response(llm, messages):
@@ -217,19 +251,53 @@ def stream_llm_rag_response(llm, messages):
     
     question = messages[-1].content
     full_response = ""
+    thoughts = []
+    final_answer = None
+    processed_chunks = set()
+
     for chunk in chain.stream(question):
         if "googlethink" in str(llm):
+            if chunk in processed_chunks:
+                continue
+            processed_chunks.add(chunk)
             try:
                 json_chunk = json.loads(chunk)
-                if isinstance(json_chunk, dict) and json_chunk.get("role") == "model" and isinstance(json_chunk.get("parts"), list) and len(json_chunk.get("parts")) == 2:
-                    thoughts = json_chunk["parts"][0]
-                    answer = json_chunk["parts"][1]
-                    yield answer
+                
+                def extract_answer(data):
+                    if isinstance(data, dict):
+                        for key, value in data.items():
+                            if key.lower() == "answer":
+                                return value
+                            elif isinstance(value, (dict, list)):
+                                result = extract_answer(value)
+                                if result:
+                                    return result
+                    elif isinstance(data, list):
+                        for item in data:
+                            result = extract_answer(item)
+                            if result:
+                                return result
+                    return None
+                
+                answer = extract_answer(json_chunk)
+                if answer:
+                    final_answer = answer
+                    yield final_answer
                     return
                 else:
-                    full_response += str(json_chunk)
+                    thoughts.append(str(json_chunk))
             except json.JSONDecodeError:
-                full_response += chunk
+                thoughts.append(chunk)
         else:
             full_response += chunk
+        
+        if "googlethink" in str(llm):
+            if final_answer is None:
+                yield " ".join(thoughts)
+        else:
+            yield full_response
+    
+    if "googlethink" in str(llm) and final_answer is None:
+        yield " ".join(thoughts)
+    elif "googlethink" not in str(llm):
         yield full_response
