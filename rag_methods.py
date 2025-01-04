@@ -209,7 +209,7 @@ def stream_llm_response(llm, messages):
         else:
             full_response += chunk.content
         
-        if "googlethink" not in str(llm"):
+        if "googlethink" not in str(llm):
             yield full_response
     
     if "googlethink" in str(llm) and final_answer is None:
