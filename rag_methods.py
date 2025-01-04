@@ -167,9 +167,9 @@ def stream_llm_response(llm, messages):
         if "googlethink" in str(llm):
             try:
                 json_chunk = json.loads(chunk.content)
-                if isinstance(json_chunk, list) and len(json_chunk) == 2:
-                    thoughts = json_chunk[0]
-                    answer = json_chunk[1]
+                if isinstance(json_chunk, dict) and json_chunk.get("role") == "model" and isinstance(json_chunk.get("parts"), list) and len(json_chunk.get("parts")) == 2:
+                    thoughts = json_chunk["parts"][0]
+                    answer = json_chunk["parts"][1]
                     yield answer
                     return
                 else:
@@ -221,9 +221,9 @@ def stream_llm_rag_response(llm, messages):
         if "googlethink" in str(llm):
             try:
                 json_chunk = json.loads(chunk)
-                if isinstance(json_chunk, list) and len(json_chunk) == 2:
-                    thoughts = json_chunk[0]
-                    answer = json_chunk[1]
+                if isinstance(json_chunk, dict) and json_chunk.get("role") == "model" and isinstance(json_chunk.get("parts"), list) and len(json_chunk.get("parts")) == 2:
+                    thoughts = json_chunk["parts"][0]
+                    answer = json_chunk["parts"][1]
                     yield answer
                     return
                 else:
