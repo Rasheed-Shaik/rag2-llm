@@ -126,31 +126,33 @@ def stream_llm_response(llm, messages):
             elif hasattr(chunk, 'content'):
                 # Handle cases where the chunk has a 'content' attribute
                 if isinstance(chunk.content, list):
-                    # If the content is a list, yield each item separately (no separator)
-                    for item in chunk.content:
-                        st.write("Yielding list item from 'content':", item)  # Debug
-                        yield str(item)
+                    # If the content is a list, join it into a single string with a dash separator
+                    #separator = "\n- "  # Dash separator
+                    list_content = separator.join(str(item) for item in chunk.content)
+                    st.write("Yielding list chunk as string:", list_content)  # Debug
+                    yield list_content
                 else:
                     st.write("Yielding chunk with 'content' attribute:", chunk.content)  # Debug
                     yield chunk.content  # Yield the content attribute
             elif isinstance(chunk, dict) and 'content' in chunk:
                 # Handle cases where the chunk is a dictionary with a 'content' key
                 if isinstance(chunk['content'], list):
-                    # If the content is a list, yield each item separately (no separator)
-                    for item in chunk['content']:
-                        st.write("Yielding list item from dictionary 'content':", item)  # Debug
-                        yield str(item)
+                    # If the content is a list, join it into a single string with a dash separator
+                    #separator = "\n- "  # Dash separator
+                    list_content = separator.join(str(item) for item in chunk['content'])
+                    st.write("Yielding list chunk as string:", list_content)  # Debug
+                    yield list_content
                 else:
                     st.write("Yielding chunk from dictionary:", chunk['content'])  # Debug
                     yield chunk['content']  # Yield the content from a dictionary
             elif isinstance(chunk, list):
-                # Apply separator ONLY to the chunk itself when it's a list
+                # If the chunk is a list, convert it to a string with a dash separator
                 separator = "\n- "  # Dash separator
                 list_content = separator.join(str(item) for item in chunk)
                 st.write("Yielding list chunk as string:", list_content)  # Debug
                 yield list_content
             else:
-                # Convert other types to string (no separator applied)
+                # Convert other types to string
                 string_content = str(chunk)
                 st.write("Yielding other chunk as string:", string_content)  # Debug
                 yield string_content
