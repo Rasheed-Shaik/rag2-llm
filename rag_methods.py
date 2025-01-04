@@ -34,10 +34,11 @@ pc = Pinecone(api_key=st.secrets.get("PINECONE_API_KEY"))
 cloud = st.secrets.get('PINECONE_CLOUD') or 'aws'
 region = st.secrets.get('PINECONE_REGION') or 'us-east-1'
 spec = ServerlessSpec(cloud=cloud, region=region)
-pinecone_index_name=os.environ['pinecone_index_name']
 
-while pinecone_index_name:
- try:
+
+def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_name):
+    """Initializes Pinecone and returns the index."""
+    try:
         
         if pinecone_index_name not in pc.list_indexes().names():
             # Create a new index with the correct dimension
@@ -60,10 +61,10 @@ while pinecone_index_name:
         
         index = pc.Index(pinecone_index_name)
         vector_db = LangchainPinecone(index=index, embedding=embedding_model, index_name=pinecone_index_name) # Create LangchainPinecone object
-        
- except Exception as e:
+        return vector_db
+    except Exception as e:
         st.error(f"Error initializing Pinecone: {e}")
-        
+        return None
 
 def load_doc_to_db(pinecone_index, rag_docs, pinecone_index_name):
     """Loads documents into the Pinecone vector database."""
@@ -95,7 +96,7 @@ def load_doc_to_db(pinecone_index, rag_docs, pinecone_index_name):
             documents = loader.load()
             chunks = text_splitter.split_documents(documents)
             
-            vector_db.add_documents(documents=chunks) # Use the LangchainPinecone object to add documents
+            pinecone_index.add_documents(documents=chunks) # Use the LangchainPinecone object to add documents
             
             st.session_state.rag_sources.extend([doc.name])
             st.success(f"Document '{doc.name}' loaded to DB")
