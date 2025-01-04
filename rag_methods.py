@@ -1,7 +1,7 @@
 import os
 import time
 import pinecone
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings # Import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader, UnstructuredMarkdownLoader
 from langchain.vectorstores import Pinecone as LangchainPinecone
@@ -23,8 +23,9 @@ import time
 load_dotenv()
 
 # Initialize embedding model
-embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=os.getenv("google_api_key"))
-embedding_dimension = 768
+embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
+embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name, model_kwargs={"trust_remote_code": True})
+embedding_dimension = 384 # Dimension for all-MiniLM-L6-v2
 
 # Initialize Pinecone client
 pinecone_api_key = st.secrets.get("PINECONE_API_KEY")
