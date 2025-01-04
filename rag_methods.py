@@ -126,8 +126,9 @@ def stream_llm_response(llm, messages):
             elif hasattr(chunk, 'content'):
                 # Handle cases where the chunk has a 'content' attribute
                 if isinstance(chunk.content, list):
-                    # If the content is a list, join it into a single string
-                    list_content = " ".join(str(item) for item in chunk.content)
+                    # If the content is a list, join it into a single string with a separator
+                    separator = "\n---\n"  # Custom separator
+                    list_content = separator.join(str(item) for item in chunk.content)
                     st.write("Yielding list chunk as string:", list_content)  # Debug
                     yield list_content
                 else:
@@ -136,16 +137,18 @@ def stream_llm_response(llm, messages):
             elif isinstance(chunk, dict) and 'content' in chunk:
                 # Handle cases where the chunk is a dictionary with a 'content' key
                 if isinstance(chunk['content'], list):
-                    # If the content is a list, join it into a single string
-                    list_content = " ".join(str(item) for item in chunk['content'])
+                    # If the content is a list, join it into a single string with a separator
+                    separator = "\n---\n"  # Custom separator
+                    list_content = separator.join(str(item) for item in chunk['content'])
                     st.write("Yielding list chunk as string:", list_content)  # Debug
                     yield list_content
                 else:
                     st.write("Yielding chunk from dictionary:", chunk['content'])  # Debug
                     yield chunk['content']  # Yield the content from a dictionary
             elif isinstance(chunk, list):
-                # If the chunk is a list, convert it to a string
-                list_content = " ".join(str(item) for item in chunk)
+                # If the chunk is a list, convert it to a string with a separator
+                separator = "\n---\n"  # Custom separator
+                list_content = separator.join(str(item) for item in chunk)
                 st.write("Yielding list chunk as string:", list_content)  # Debug
                 yield list_content
             else:
@@ -156,7 +159,6 @@ def stream_llm_response(llm, messages):
     except Exception as e:
         st.write(f"Error during streaming: {e}")  # Debug: Log the error
         yield f"An error occurred: {str(e)}"
-
 
 def stream_llm_rag_response(llm, messages):
     if not st.session_state.vector_db:
