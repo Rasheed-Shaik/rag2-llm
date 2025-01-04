@@ -24,7 +24,7 @@ from rag_methods import (
 dotenv.load_dotenv()
 
 
-MODELS = ["google/gemini-2.0-flash-exp"]
+MODELS = ["google/gemini-2.0-flash-exp","googlethink/gemini-2.0-flash-thinking-exp"]
 
 
 st.set_page_config(
