@@ -154,7 +154,8 @@ def stream_llm_rag_response(llm, messages):
     prompt = PromptTemplate.from_template(template)
     
     def format_docs(docs):
-        return "\n\n".join(format_document(doc) for doc in docs) # Removed metadata_keys
+        prompt_template = PromptTemplate.from_template("{page_content}") # Create a simple prompt template
+        return "\n\n".join(format_document(doc, prompt=prompt_template) for doc in docs) # Pass the prompt
     
     chain = (
         {"context": retriever | format_docs, "question": RunnablePassthrough()}
