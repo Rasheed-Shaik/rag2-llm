@@ -120,6 +120,9 @@ def stream_llm_response(llm, messages):
                 chunk_content = chunk.content  # Extract the content
             elif isinstance(chunk, str):
                 chunk_content = chunk  # Use the string directly
+            elif isinstance(chunk, list):
+                # If the chunk is a list, convert it to a string
+                chunk_content = " ".join(str(item) for item in chunk)
             else:
                 chunk_content = str(chunk)  # Convert other types to string
 
