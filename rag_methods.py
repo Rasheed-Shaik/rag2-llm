@@ -115,21 +115,29 @@ import time  # Add this import
 def stream_llm_response(llm, messages):
     """Streams the LLM response without RAG."""
     try:
+        full_response = ""  # Buffer to store the entire response
         for chunk in llm.stream(messages):
             # Debug: Log the type and content of the chunk
             print(f"Chunk type: {type(chunk)}, Chunk content: {chunk}")
 
             # Ensure the chunk is a string
             if isinstance(chunk, str):
-                yield chunk  # Yield the string directly
+                full_response += chunk  # Add the chunk to the buffer
             elif hasattr(chunk, 'content'):
-                yield chunk.content  # Yield the content attribute
+                full_response += chunk.content  # Add the content to the buffer
             elif isinstance(chunk, list):
                 # If the chunk is a list, convert it to a string
-                yield " ".join(str(item) for item in chunk)
+                full_response += " ".join(str(item) for item in chunk)
             else:
                 # Convert other types to string
-                yield str(chunk)
+                full_response += str(chunk)
+
+        # Split the response into thoughts and answer
+        if "Answer:" in full_response:
+            thoughts, answer = full_response.split("Answer:", 1)
+            yield f"Thoughts: {thoughts.strip()}\nAnswer: {answer.strip()}"
+        else:
+            yield full_response  # If no delimiter is found, yield the full response
     except Exception as e:
         yield f"An error occurred: {str(e)}"
 
