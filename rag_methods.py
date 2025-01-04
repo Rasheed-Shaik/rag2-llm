@@ -117,20 +117,30 @@ def stream_llm_response(llm, messages):
     try:
         for chunk in llm.stream(messages):
             # Debug: Log the type and content of the chunk
-            print(f"Chunk type: {type(chunk)}, Chunk content: {chunk}")
+            st.write(f"Chunk type: {type(chunk)}, Chunk content: {chunk}")
 
-            # Ensure the chunk is a string
+            # Handle different chunk types
             if isinstance(chunk, str):
+                st.write("Yielding string chunk:", chunk)  # Debug
                 yield chunk  # Yield the string directly
             elif hasattr(chunk, 'content'):
+                st.write("Yielding chunk with 'content' attribute:", chunk.content)  # Debug
                 yield chunk.content  # Yield the content attribute
+            elif isinstance(chunk, dict) and 'content' in chunk:
+                st.write("Yielding chunk from dictionary:", chunk['content'])  # Debug
+                yield chunk['content']  # Yield the content from a dictionary
             elif isinstance(chunk, list):
                 # If the chunk is a list, convert it to a string
-                yield " ".join(str(item) for item in chunk)
+                list_content = " ".join(str(item) for item in chunk)
+                st.write("Yielding list chunk as string:", list_content)  # Debug
+                yield list_content
             else:
                 # Convert other types to string
-                yield str(chunk)
+                string_content = str(chunk)
+                st.write("Yielding other chunk as string:", string_content)  # Debug
+                yield string_content
     except Exception as e:
+        st.write(f"Error during streaming: {e}")  # Debug: Log the error
         yield f"An error occurred: {str(e)}"
 
 
