@@ -13,7 +13,7 @@ if os.name == 'posix':
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage,AIMessage
+from langchain.schema import HumanMessage, AIMessage
 from rag_methods import (
     load_doc_to_db, 
     load_url_to_db,
@@ -24,9 +24,7 @@ from rag_methods import (
 
 dotenv.load_dotenv()
 
-
-MODELS = ["google/gemini-2.0-flash-exp","think/gemini-2.0-flash-thinking-exp"]
-
+MODELS = ["google/gemini-2.0-flash-exp", "think/gemini-2.0-flash-thinking-exp"]
 
 st.set_page_config(
     page_title="RAG LLM app?", 
@@ -47,43 +45,40 @@ if "rag_sources" not in st.session_state:
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "user", "content": "Hello"},
         {"role": "assistant", "content": "Hi there! How can I assist you today?"}
-]
-    
+    ]
+
 # --- Side Bar LLM API Tokens ---  
 with st.sidebar:
-        default_google_api_key = os.getenv("google_api_key") if os.getenv("google_api_key") is not None else ""  # only for development environment, otherwise it should return None
-        with st.popover("🔐 Google"):
-            google_api_key = st.text_input(
-                "Input your Google API Key", 
-                value=default_google_api_key, 
-                type="password",
-                key="google_api_key",
-            )
+    default_google_api_key = os.getenv("google_api_key") if os.getenv("google_api_key") is not None else ""  # only for development environment, otherwise it should return None
+    with st.popover("🔐 Google"):
+        google_api_key = st.text_input(
+            "Input your Google API Key", 
+            value=default_google_api_key, 
+            type="password",
+            key="google_api_key",
+        )
 
-        default_anthropic_api_key = os.getenv("ANTHROPIC_API_KEY") if os.getenv("ANTHROPIC_API_KEY") is not None else ""
-        with st.popover("🔐 Anthropic"):
-            anthropic_api_key = st.text_input(
-                "Introduce your Anthropic API Key (https://console.anthropic.com/)", 
-                value=default_anthropic_api_key, 
-                type="password",
-                key="anthropic_api_key",
-            )
-        
-        # Pinecone API key and environment are now loaded from st.secrets
-        pinecone_api_key = st.secrets.get("PINECONE_API_KEY")
-        pinecone_environment = st.secrets.get("PINECONE_ENVIRONMENT")
-        
-        default_pinecone_index_name = os.getenv("PINECONE_INDEX_NAME") if os.getenv("PINECONE_INDEX_NAME") is not None else ""
-        with st.popover("🗂️ Pinecone Index Name"):
-            pinecone_index_name = st.text_input(
-                "Introduce your Pinecone Index Name",
-                value=default_pinecone_index_name,
-                key="pinecone_index_name",
-            )
+    default_anthropic_api_key = os.getenv("ANTHROPIC_API_KEY") if os.getenv("ANTHROPIC_API_KEY") is not None else ""
+    with st.popover("🔐 Anthropic"):
+        anthropic_api_key = st.text_input(
+            "Introduce your Anthropic API Key (https://console.anthropic.com/)", 
+            value=default_anthropic_api_key, 
+            type="password",
+            key="anthropic_api_key",
+        )
     
-
+    # Pinecone API key and environment are now loaded from st.secrets
+    pinecone_api_key = st.secrets.get("PINECONE_API_KEY")
+    pinecone_environment = st.secrets.get("PINECONE_ENVIRONMENT")
+    
+    default_pinecone_index_name = os.getenv("PINECONE_INDEX_NAME") if os.getenv("PINECONE_INDEX_NAME") is not None else ""
+    with st.popover("🗂️ Pinecone Index Name"):
+        pinecone_index_name = st.text_input(
+            "Introduce your Pinecone Index Name",
+            value=default_pinecone_index_name,
+            key="pinecone_index_name",
+        )
 
 # --- Main Content ---
 # Checking if the user has introduced the OpenAI API Key, if not, a warning is displayed
@@ -113,7 +108,7 @@ else:
 
         cols0 = st.columns(2)
         if "vector_db" not in st.session_state:
-          st.session_state.vector_db = None
+            st.session_state.vector_db = None
         
         # Initialize Pinecone on startup
         if st.session_state.vector_db is None:
@@ -133,13 +128,13 @@ else:
         with cols0[0]:
             is_vector_db_loaded = (st.session_state.vector_db is not None)
             st.toggle(
-              "Use RAG", 
-              value=is_vector_db_loaded, 
-              key="use_rag", 
-              disabled=not is_vector_db_loaded,
-)
+                "Use RAG", 
+                value=is_vector_db_loaded, 
+                key="use_rag", 
+                disabled=not is_vector_db_loaded,
+            )
         with cols0[1]:
-                st.button("Clear Chat", on_click=lambda: st.session_state.messages.clear(), type="primary")
+            st.button("Clear Chat", on_click=lambda: st.session_state.messages.clear(), type="primary")
         
         st.header("RAG Sources:")
             
@@ -165,8 +160,6 @@ else:
         with st.expander(f"📚 Documents in DB ({0 if not is_vector_db_loaded else len(st.session_state.rag_sources)})"):
             st.write([] if not is_vector_db_loaded else [source for source in st.session_state.rag_sources])
 
-    
-    
     model_provider = st.session_state.model.split("/")[0]
     if model_provider == "think":
         llm_stream = ChatGoogleGenerativeAI(
@@ -188,7 +181,6 @@ else:
             google_api_key=google_api_key,
             temperature=0,
             streaming=True,
-            
         )
 
     for message in st.session_state.messages:
@@ -207,6 +199,13 @@ else:
             messages = [HumanMessage(content=m["content"]) if m["role"] == "user" else AIMessage(content=m["content"]) for m in st.session_state.messages]
 
             if not st.session_state.use_rag:
-                st.write_stream(stream_llm_response(llm_stream, messages))
+                for chunk in stream_llm_response(llm_stream, messages):
+                    full_response += chunk
+                    message_placeholder.markdown(full_response + "▌")
             else:
-                st.write_stream(stream_llm_rag_response(llm_stream, messages))
+                for chunk in stream_llm_rag_response(llm_stream, messages):
+                    full_response += chunk
+                    message_placeholder.markdown(full_response + "▌")
+
+            message_placeholder.markdown(full_response)
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
