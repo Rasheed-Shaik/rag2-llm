@@ -178,24 +178,47 @@ def stream_llm_response(llm, messages):
             yield chunk.content
         return
     
+    thoughts = []
+    final_answer = None
     for chunk in llm.stream(messages):
         if "googlethink" in str(llm):
             if chunk.content in processed_chunks:
                 continue
             processed_chunks.add(chunk.content)
-            full_response += chunk.content
+            try:
+                json_chunk = json.loads(chunk.content)
+                
+                def extract_answer(data):
+                    if isinstance(data, dict):
+                        for key, value in data.items():
+                            if key.lower() == "answer":
+                                return value
+                            elif isinstance(value, (dict, list)):
+                                result = extract_answer(value)
+                                if result:
+                                    return result
+                    elif isinstance(data, list):
+                        for item in data:
+                            result = extract_answer(item)
+                            if result:
+                                return result
+                    return None
+                
+                answer = extract_answer(json_chunk)
+                if answer:
+                    final_answer = answer
+                else:
+                    thoughts.append(str(json_chunk))
+            except json.JSONDecodeError:
+                thoughts.append(chunk.content)
         else:
             full_response += chunk.content
     
     if "googlethink" in str(llm):
-        try:
-            sentences = full_response.split(".")
-            if sentences:
-                yield " ".join(sentences[:-1]).strip() + "\n\n" + sentences[-1].strip()
-            else:
-                yield full_response
-        except:
-            yield full_response
+        if final_answer:
+            yield "Thoughts:\n" + " ".join(thoughts) + "\n\nAnswer:\n" + final_answer
+        else:
+            yield "Thoughts:\n" + " ".join(thoughts)
     else:
         yield full_response
 
@@ -250,23 +273,46 @@ def stream_llm_rag_response(llm, messages):
             yield chunk.content
         return
 
+    thoughts = []
+    final_answer = None
     for chunk in chain.stream(question):
         if "googlethink" in str(llm):
             if chunk in processed_chunks:
                 continue
             processed_chunks.add(chunk)
-            full_response += chunk
+            try:
+                json_chunk = json.loads(chunk)
+                
+                def extract_answer(data):
+                    if isinstance(data, dict):
+                        for key, value in data.items():
+                            if key.lower() == "answer":
+                                return value
+                            elif isinstance(value, (dict, list)):
+                                result = extract_answer(value)
+                                if result:
+                                    return result
+                    elif isinstance(data, list):
+                        for item in data:
+                            result = extract_answer(item)
+                            if result:
+                                return result
+                    return None
+                
+                answer = extract_answer(json_chunk)
+                if answer:
+                    final_answer = answer
+                else:
+                    thoughts.append(str(json_chunk))
+            except json.JSONDecodeError:
+                thoughts.append(chunk)
         else:
             full_response += chunk
     
     if "googlethink" in str(llm):
-        try:
-            sentences = full_response.split(".")
-            if sentences:
-                yield " ".join(sentences[:-1]).strip() + "\n\n" + sentences[-1].strip()
-            else:
-                yield full_response
-        except:
-            yield full_response
+        if final_answer:
+            yield "Thoughts:\n" + " ".join(thoughts) + "\n\nAnswer:\n" + final_answer
+        else:
+            yield "Thoughts:\n" + " ".join(thoughts)
     else:
         yield full_response
