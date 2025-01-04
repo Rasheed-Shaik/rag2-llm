@@ -92,6 +92,7 @@ else:
             google_api_key=google_api_key,
             temperature=0,
             streaming=True,
+            verbose=True,
         )
     elif model_provider == "think":
         llm_stream = ChatGoogleGenerativeAI(
@@ -99,6 +100,7 @@ else:
             google_api_key=google_api_key,
             temperature=0,
             streaming=True,
+            verbose=True
         )
     elif model_provider == "anthropic":
         llm_stream = ChatAnthropic(
