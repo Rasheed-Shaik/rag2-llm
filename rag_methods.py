@@ -1,5 +1,4 @@
 import os
-import tempfile
 import json
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -56,32 +55,28 @@ def load_doc_to_db(pinecone_index, rag_docs, pinecone_index_name):
 
     for doc in rag_docs:
         file_extension = doc.name.split(".")[-1].lower()
+        loader = {
+            "pdf": PyPDFLoader,
+            "txt": TextLoader,
+            "docx": Docx2txtLoader,
+            "md": UnstructuredMarkdownLoader,
+        }.get(file_extension)
+
+        if not loader:
+            st.warning(f"Unsupported file type: {file_extension}")
+            continue
+
         try:
-            with tempfile.NamedTemporaryFile(suffix=f".{file_extension}", delete=False) as tmp_file:
-                tmp_file.write(doc.read())
-                tmp_file_path = tmp_file.name
-
-            loader = {
-                "pdf": PyPDFLoader,
-                "txt": TextLoader,
-                "docx": Docx2txtLoader,
-                "md": UnstructuredMarkdownLoader,
-            }.get(file_extension)
-
-            if not loader:
-                st.warning(f"Unsupported file type: {file_extension}")
-                continue
-
-            documents = loader(tmp_file_path).load()
+            # Load the document directly from the uploaded file
+            documents = loader(doc).load()
             chunks = text_splitter.split_documents(documents)
             vector_ids = pinecone_index.add_documents(chunks)
             
             st.session_state.rag_sources.append(doc.name)
             metadata[doc.name] = vector_ids
             st.success(f"Document '{doc.name}' loaded to DB")
-        finally:
-            if 'tmp_file_path' in locals() and os.path.exists(tmp_file_path):
-                os.remove(tmp_file_path)
+        except Exception as e:
+            st.error(f"Error loading document '{doc.name}': {e}")
     
     with open(METADATA_FILE, "w") as f:
         json.dump(metadata, f)
@@ -94,6 +89,7 @@ def load_url_to_db(pinecone_index, rag_url, pinecone_index_name):
     metadata = json.load(open(METADATA_FILE)) if os.path.exists(METADATA_FILE) else {}
 
     try:
+        # Load the document from the URL
         documents = WebBaseLoader(rag_url).load()
         chunks = text_splitter.split_documents(documents)
         vector_ids = pinecone_index.add_documents(chunks)
@@ -112,50 +108,37 @@ def stream_llm_response(llm, messages):
     """Streams the LLM response without RAG."""
     try:
         for chunk in llm.stream(messages):
-            # Debug: Log the type and content of the chunk
-           
-
             # Handle different chunk types
             if isinstance(chunk, str):
-               
                 yield chunk  # Yield the string directly
             elif hasattr(chunk, 'content'):
                 # Handle cases where the chunk has a 'content' attribute
                 if isinstance(chunk.content, list):
-                    # If the content is a list, join it into a single string with a dash separator
+                    # If the content is a list, join it into a single string with a separator
                     separator = "\n- "  # Dash separator
                     list_content = separator.join(str(item) for item in chunk.content)
-                   
                     yield list_content
                 else:
-                  
                     yield chunk.content  # Yield the content attribute
             elif isinstance(chunk, dict) and 'content' in chunk:
                 # Handle cases where the chunk is a dictionary with a 'content' key
                 if isinstance(chunk['content'], list):
-                    # If the content is a list, join it into a single string with a dash separator
-                    #separator = "\n- "  # Dash separator
-                    list_content = " ".join(str(item) for item in chunk['content'])
-                 
+                    # If the content is a list, join it into a single string with a separator
+                    separator = "\n- "  # Dash separator
+                    list_content = separator.join(str(item) for item in chunk['content'])
                     yield list_content
                 else:
-             
                     yield chunk['content']  # Yield the content from a dictionary
             elif isinstance(chunk, list):
-                # If the chunk is a list, convert it to a string with a dash separator
-                #separator = "\n- "  # Dash separator
-                list_content = " ".join(str(item) for item in chunk)
-             
+                # If the chunk is a list, convert it to a string with a separator
+                separator = "\n- "  # Dash separator
+                list_content = separator.join(str(item) for item in chunk)
                 yield list_content
             else:
                 # Convert other types to string
-                string_content = str(chunk)
-                
-                yield string_content
+                yield str(chunk)
     except Exception as e:
-       
         yield f"An error occurred: {str(e)}"
-
 
 def stream_llm_rag_response(llm, messages):
     if not st.session_state.vector_db:
