@@ -124,11 +124,25 @@ def stream_llm_response(llm, messages):
                 st.write("Yielding string chunk:", chunk)  # Debug
                 yield chunk  # Yield the string directly
             elif hasattr(chunk, 'content'):
-                st.write("Yielding chunk with 'content' attribute:", chunk.content)  # Debug
-                yield chunk.content  # Yield the content attribute
+                # Handle cases where the chunk has a 'content' attribute
+                if isinstance(chunk.content, list):
+                    # If the content is a list, join it into a single string
+                    list_content = " ".join(str(item) for item in chunk.content)
+                    st.write("Yielding list chunk as string:", list_content)  # Debug
+                    yield list_content
+                else:
+                    st.write("Yielding chunk with 'content' attribute:", chunk.content)  # Debug
+                    yield chunk.content  # Yield the content attribute
             elif isinstance(chunk, dict) and 'content' in chunk:
-                st.write("Yielding chunk from dictionary:", chunk['content'])  # Debug
-                yield chunk['content']  # Yield the content from a dictionary
+                # Handle cases where the chunk is a dictionary with a 'content' key
+                if isinstance(chunk['content'], list):
+                    # If the content is a list, join it into a single string
+                    list_content = " ".join(str(item) for item in chunk['content'])
+                    st.write("Yielding list chunk as string:", list_content)  # Debug
+                    yield list_content
+                else:
+                    st.write("Yielding chunk from dictionary:", chunk['content'])  # Debug
+                    yield chunk['content']  # Yield the content from a dictionary
             elif isinstance(chunk, list):
                 # If the chunk is a list, convert it to a string
                 list_content = " ".join(str(item) for item in chunk)
