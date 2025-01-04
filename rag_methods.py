@@ -113,11 +113,11 @@ def stream_llm_response(llm, messages):
     try:
         for chunk in llm.stream(messages):
             # Debug: Log the type and content of the chunk
-         
+           
 
             # Handle different chunk types
             if isinstance(chunk, str):
-                
+               
                 yield chunk  # Yield the string directly
             elif hasattr(chunk, 'content'):
                 # Handle cases where the chunk has a 'content' attribute
@@ -128,7 +128,7 @@ def stream_llm_response(llm, messages):
                    
                     yield list_content
                 else:
-                    st.write("Yielding chunk with 'content' attribute:", chunk.content)  # Debug
+                  
                     yield chunk.content  # Yield the content attribute
             elif isinstance(chunk, dict) and 'content' in chunk:
                 # Handle cases where the chunk is a dictionary with a 'content' key
@@ -136,23 +136,31 @@ def stream_llm_response(llm, messages):
                     # If the content is a list, join it into a single string with a dash separator
                     #separator = "\n- "  # Dash separator
                     list_content = " ".join(str(item) for item in chunk['content'])
+                 
                     yield list_content
                 else:
-                    st.write("Yielding chunk from dictionary:", chunk['content'])  # Debug
+             
                     yield chunk['content']  # Yield the content from a dictionary
             elif isinstance(chunk, list):
                 # If the chunk is a list, convert it to a string with a dash separator
                 #separator = "\n- "  # Dash separator
                 list_content = " ".join(str(item) for item in chunk)
+             
                 yield list_content
             else:
                 # Convert other types to string
-                string_content = str(chunk) # Debug
+                string_content = str(chunk)
+                
                 yield string_content
     except Exception as e:
-        st.write(f"Error during streaming: {e}")  # Debug: Log the error
+       
         yield f"An error occurred: {str(e)}"
 
+
+def stream_llm_rag_response(llm, messages):
+    if not st.session_state.vector_db:
+        yield "No vector database initialized."
+        return
     
     retriever = st.session_state.vector_db.as_retriever()
     prompt = PromptTemplate.from_template("""
