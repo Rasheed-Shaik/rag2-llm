@@ -202,5 +202,6 @@ def stream_llm_rag_response(llm, messages):
     
     question = messages[-1].content
     
+    # Stream the response and yield each chunk
     for chunk in chain.stream(question):
         yield chunk
