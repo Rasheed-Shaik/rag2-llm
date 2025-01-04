@@ -21,7 +21,6 @@ import tempfile
 import time
 import json
 import shutil
-from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
@@ -163,64 +162,8 @@ def load_url_to_db(pinecone_index, rag_url, pinecone_index_name):
 
 def stream_llm_response(llm, messages):
     """Streams the LLM response."""
-    full_response = ""
-    processed_chunks = set()
-    
-    simple_questions = ["who are you", "what is 1+1", "what is your name"]
-    if any(q.lower() in messages[-1].content.lower() for q in simple_questions):
-        simple_llm = ChatGoogleGenerativeAI(
-            model="gemini-pro",
-            google_api_key=st.secrets.get("google_api_key"),
-            temperature=0.3,
-            streaming=True
-        )
-        for chunk in simple_llm.stream(messages):
-            yield chunk.content
-        return
-    
-    thoughts = []
-    final_answer = None
     for chunk in llm.stream(messages):
-        if "googlethink" in str(llm):
-            if chunk.content in processed_chunks:
-                continue
-            processed_chunks.add(chunk.content)
-            try:
-                json_chunk = json.loads(chunk.content)
-                
-                def extract_answer(data):
-                    if isinstance(data, dict):
-                        for key, value in data.items():
-                            if key.lower() == "answer":
-                                return value
-                            elif isinstance(value, (dict, list)):
-                                result = extract_answer(value)
-                                if result:
-                                    return result
-                    elif isinstance(data, list):
-                        for item in data:
-                            result = extract_answer(item)
-                            if result:
-                                return result
-                    return None
-                
-                answer = extract_answer(json_chunk)
-                if answer:
-                    final_answer = answer
-                else:
-                    thoughts.append(str(json_chunk))
-            except json.JSONDecodeError:
-                thoughts.append(chunk.content)
-        else:
-            full_response += chunk.content
-    
-    if "googlethink" in str(llm):
-        if final_answer:
-            yield "Thoughts:\n" + " ".join(thoughts) + "\n\nAnswer:\n" + final_answer
-        else:
-            yield "Thoughts:\n" + " ".join(thoughts)
-    else:
-        yield full_response
+        yield chunk.content
 
 def stream_llm_rag_response(llm, messages):
     """Streams the LLM response with RAG."""
@@ -258,61 +201,6 @@ def stream_llm_rag_response(llm, messages):
     )
     
     question = messages[-1].content
-    full_response = ""
-    processed_chunks = set()
     
-    simple_questions = ["who are you", "what is 1+1", "what is your name"]
-    if any(q.lower() in messages[-1].content.lower() for q in simple_questions):
-        simple_llm = ChatGoogleGenerativeAI(
-            model="gemini-pro",
-            google_api_key=st.secrets.get("google_api_key"),
-            temperature=0.3,
-            streaming=True
-        )
-        for chunk in simple_llm.stream(messages):
-            yield chunk.content
-        return
-
-    thoughts = []
-    final_answer = None
     for chunk in chain.stream(question):
-        if "googlethink" in str(llm):
-            if chunk in processed_chunks:
-                continue
-            processed_chunks.add(chunk)
-            try:
-                json_chunk = json.loads(chunk)
-                
-                def extract_answer(data):
-                    if isinstance(data, dict):
-                        for key, value in data.items():
-                            if key.lower() == "answer":
-                                return value
-                            elif isinstance(value, (dict, list)):
-                                result = extract_answer(value)
-                                if result:
-                                    return result
-                    elif isinstance(data, list):
-                        for item in data:
-                            result = extract_answer(item)
-                            if result:
-                                return result
-                    return None
-                
-                answer = extract_answer(json_chunk)
-                if answer:
-                    final_answer = answer
-                else:
-                    thoughts.append(str(json_chunk))
-            except json.JSONDecodeError:
-                thoughts.append(chunk)
-        else:
-            full_response += chunk
-    
-    if "googlethink" in str(llm):
-        if final_answer:
-            yield "Thoughts:\n" + " ".join(thoughts) + "\n\nAnswer:\n" + final_answer
-        else:
-            yield "Thoughts:\n" + " ".join(thoughts)
-    else:
-        yield full_response
+        yield chunk
