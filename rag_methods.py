@@ -147,7 +147,7 @@ def stream_llm_response(llm, messages):
                     yield chunk['content']  # Yield the content from a dictionary
             elif isinstance(chunk, list):
                 # If the chunk is a list, convert it to a string with a dash separator
-                separator = "\n- "  # Dash separator
+                #separator = "\n- "  # Dash separator
                 list_content = separator.join(str(item) for item in chunk)
                 st.write("Yielding list chunk as string:", list_content)  # Debug
                 yield list_content
