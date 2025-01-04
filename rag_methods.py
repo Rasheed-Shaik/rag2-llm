@@ -95,7 +95,7 @@ def load_doc_to_db(pinecone_index, rag_docs, pinecone_index_name):
             documents = loader.load()
             chunks = text_splitter.split_documents(documents)
             
-            pinecone_index.add_documents(documents=chunks) # Use the LangchainPinecone object to add documents
+            vector_db.add_documents(documents=chunks) # Use the LangchainPinecone object to add documents
             
             st.session_state.rag_sources.extend([doc.name])
             st.success(f"Document '{doc.name}' loaded to DB")
