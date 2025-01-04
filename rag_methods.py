@@ -113,15 +113,26 @@ import time  # Add this import
 def stream_llm_response(llm, messages):
     """Streams the LLM response without RAG."""
     try:
+        buffer = ""  # Buffer to temporarily store chunks
         for chunk in llm.stream(messages):
             # Ensure the chunk is a string
             if hasattr(chunk, 'content'):
-                yield chunk.content  # Yield only the content
+                chunk_content = chunk.content  # Extract the content
             elif isinstance(chunk, str):
-                yield chunk  # Yield the string directly
+                chunk_content = chunk  # Use the string directly
             else:
-                yield str(chunk)  # Convert other types to string
-            time.sleep(0.1)  # Small delay to ensure all chunks are processed
+                chunk_content = str(chunk)  # Convert other types to string
+
+            buffer += chunk_content  # Add the chunk to the buffer
+
+            # Yield the buffer if it contains a complete thought or answer
+            if "\n" in buffer or "." in buffer or "?" in buffer:
+                yield buffer
+                buffer = ""  # Clear the buffer
+
+        # Yield any remaining content in the buffer
+        if buffer:
+            yield buffer
     except Exception as e:
         yield f"An error occurred: {str(e)}"
 
