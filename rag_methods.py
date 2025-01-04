@@ -61,6 +61,15 @@ def initialize_pinecone(pinecone_api_key, pinecone_environment, pinecone_index_n
         
         index = pc.Index(pinecone_index_name)
         vector_db = LangchainPinecone(index=index, embedding=embedding_model, text_key="text") # Create LangchainPinecone object with text_key
+        
+        # Load persisted documents if they exist
+        if "persisted_docs" in st.session_state:
+            for doc_name, vector_ids in st.session_state.persisted_docs.items():
+                st.write(f"Loading persisted document: {doc_name}")
+                # You might need to re-load the document content here if needed
+                # For now, we'll just add the vector IDs to the session state
+                st.session_state.rag_sources.extend([doc_name])
+        
         return vector_db
     except Exception as e:
         st.error(f"Error initializing Pinecone: {e}")
@@ -72,6 +81,9 @@ def load_doc_to_db(pinecone_index, rag_docs, pinecone_index_name):
         return
     
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    
+    if "persisted_docs" not in st.session_state:
+        st.session_state.persisted_docs = {}
     
     for doc in rag_docs:
         file_extension = doc.name.split(".")[-1].lower()
@@ -96,9 +108,10 @@ def load_doc_to_db(pinecone_index, rag_docs, pinecone_index_name):
             documents = loader.load()
             chunks = text_splitter.split_documents(documents)
             
-            pinecone_index.add_documents(documents=chunks) # Use the LangchainPinecone object to add documents
+            vector_ids = pinecone_index.add_documents(documents=chunks) # Use the LangchainPinecone object to add documents
             
             st.session_state.rag_sources.extend([doc.name])
+            st.session_state.persisted_docs[doc.name] = vector_ids
             st.success(f"Document '{doc.name}' loaded to DB")
         finally:
             if 'tmp_file_path' in locals() and os.path.exists(tmp_file_path):
@@ -111,15 +124,19 @@ def load_url_to_db(pinecone_index, rag_url, pinecone_index_name):
     
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     
+    if "persisted_docs" not in st.session_state:
+        st.session_state.persisted_docs = {}
+    
     try:
         from langchain.document_loaders import WebBaseLoader
         loader = WebBaseLoader(rag_url)
         documents = loader.load()
         chunks = text_splitter.split_documents(documents)
         
-        pinecone_index.add_documents(documents=chunks) # Use the LangchainPinecone object to add documents
+        vector_ids = pinecone_index.add_documents(documents=chunks) # Use the LangchainPinecone object to add documents
         
         st.session_state.rag_sources.extend([rag_url])
+        st.session_state.persisted_docs[rag_url] = vector_ids
         st.success(f"URL '{rag_url}' loaded to DB")
     except Exception as e:
         st.error(f"Error loading URL: {e}")
